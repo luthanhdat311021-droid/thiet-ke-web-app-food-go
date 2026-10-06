@@ -1,0 +1,180 @@
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Banknote, Loader2, QrCode, ShoppingBag } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useApp } from '@/components/app-provider'
+import { RequireAuth } from '@/components/require-auth'
+import { EmptyState, Panel } from '@/components/cards'
+import { Field, TextArea } from '@/components/field'
+import { errorMessage, supabase } from '@/lib/supabase'
+import { money, shippingFee } from '@/lib/format'
+import type { Address, Order } from '@/lib/types'
+
+export default function CheckoutPage() {
+  return <RequireAuth><Checkout /></RequireAuth>
+}
+
+function Checkout() {
+  const router = useRouter()
+  const { user, profile, cart, cartSubtotal, clearCart, toast } = useApp()
+  const [addresses, setAddresses] = useState<Address[] | null>(null)
+  const [selected, setSelected] = useState<number | 'new'>('new')
+  const [recipient, setRecipient] = useState('')
+  const [phone, setPhone] = useState('')
+  const [address, setAddress] = useState('')
+  const [saveAddress, setSaveAddress] = useState(true)
+  const [payment, setPayment] = useState<'cod' | 'qr'>('qr')
+  const [note, setNote] = useState('')
+  const [agree, setAgree] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    supabase.from('fg_addresses').select('*').order('is_default', { ascending: false }).order('created_at', { ascending: false })
+      .then(({ data }) => {
+        const list = (data ?? []) as Address[]
+        setAddresses(list)
+        if (list.length) setSelected(list[0].id)
+      })
+  }, [])
+
+  useEffect(() => {
+    if (profile && !recipient) setRecipient(profile.full_name ?? '')
+    if (profile && !phone) setPhone(profile.phone ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile])
+
+  if (!cart.length) {
+    return (
+      <main className="mx-auto max-w-2xl px-5 pb-24 pt-10">
+        <EmptyState icon={<ShoppingBag />} title="Giỏ hàng đang trống"><Link href="/search" className="font-bold text-[#ff5b35]">Khám phá món ăn</Link></EmptyState>
+      </main>
+    )
+  }
+
+  const fee = shippingFee(cartSubtotal)
+  const chosen = addresses?.find(a => a.id === selected)
+
+  const placeOrder = async () => {
+    setError('')
+    const info = chosen ? { recipient: chosen.recipient, phone: chosen.phone, address: chosen.address } : { recipient, phone, address }
+    if (!info.recipient.trim() || !info.address.trim()) return setError('Vui lòng nhập đầy đủ người nhận và địa chỉ')
+    if (!/^(0|\+84)\d{9,10}$/.test(info.phone.replace(/[\s.]/g, ''))) return setError('Số điện thoại không hợp lệ')
+    if (!agree) return setError('Bạn cần đồng ý với điều khoản đặt hàng')
+
+    setBusy(true)
+    try {
+      if (!chosen && saveAddress && user) {
+        await supabase.from('fg_addresses').insert({ user_id: user.id, label: 'Nhà riêng', ...info, is_default: !addresses?.length })
+      }
+      const { data, error } = await supabase.rpc('fg_place_order', {
+        p_items: cart.map(x => ({ food_id: x.food_id, qty: x.qty })),
+        p_recipient: info.recipient,
+        p_phone: info.phone,
+        p_address: info.address,
+        p_payment_method: payment,
+        p_note: note,
+      })
+      if (error) throw error
+      const order = data as Order
+      clearCart()
+      toast('Đặt hàng thành công')
+      router.replace(`/orders/${order.id}?new=1`)
+    } catch (e) {
+      setError(errorMessage(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <main className="mx-auto max-w-[1200px] px-5 pb-24 pt-8 lg:px-10">
+      <Link href={`/restaurants/${cart[0].restaurant_id}`} className="-my-3 inline-block py-3 text-sm font-bold text-[#ff5b35]">← Tiếp tục chọn món</Link>
+      <h1 className="mt-5 text-3xl font-extrabold">Thanh toán</h1>
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_380px]">
+        <section className="flex flex-col gap-5">
+          <Panel title="Địa chỉ giao hàng" action={<Link href="/account?tab=addresses" className="py-2 text-sm font-bold text-[#ff5b35]">Quản lý</Link>}>
+            <div className="flex flex-col gap-3">
+              {addresses?.map(a => (
+                <label key={a.id} className={`flex cursor-pointer gap-3 rounded-xl border p-4 ${selected === a.id ? 'border-2 border-[#ff5b35] bg-[#fff5f1]' : 'border-[#eaded8]'}`}>
+                  <input type="radio" name="address" checked={selected === a.id} onChange={() => setSelected(a.id)} className="mt-1 size-4 accent-[#ff5b35]" />
+                  <span className="text-sm">
+                    <b>{a.recipient}</b> <span className="text-[#746b67]">• {a.phone}</span>
+                    {a.is_default && <span className="ml-2 rounded bg-[#fff0eb] px-2 py-0.5 text-xs font-bold text-[#ff5b35]">Mặc định</span>}
+                    <span className="mt-1 block text-[#746b67]">{a.address}</span>
+                  </span>
+                </label>
+              ))}
+              {!!addresses?.length && (
+                <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 text-sm font-semibold ${selected === 'new' ? 'border-2 border-[#ff5b35] bg-[#fff5f1]' : 'border-[#eaded8]'}`}>
+                  <input type="radio" name="address" checked={selected === 'new'} onChange={() => setSelected('new')} className="size-4 accent-[#ff5b35]" />
+                  Giao đến địa chỉ khác
+                </label>
+              )}
+              {selected === 'new' && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Người nhận" value={recipient} onChange={setRecipient} autoComplete="name" />
+                  <Field label="Số điện thoại" type="tel" value={phone} onChange={setPhone} autoComplete="tel" />
+                  <div className="sm:col-span-2"><Field label="Địa chỉ" value={address} onChange={setAddress} placeholder="Số nhà, đường, phường, quận, thành phố" autoComplete="street-address" /></div>
+                  <label className="flex cursor-pointer items-center gap-3 py-1 text-sm text-[#746b67] sm:col-span-2">
+                    <input type="checkbox" checked={saveAddress} onChange={e => setSaveAddress(e.target.checked)} className="size-5 accent-[#ff5b35]" /> Lưu địa chỉ cho lần sau
+                  </label>
+                </div>
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="Phương thức thanh toán">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <PayOption active={payment === 'qr'} onClick={() => setPayment('qr')} icon={<QrCode />} title="Chuyển khoản QR" desc="Quét mã VietQR bằng app ngân hàng, xác nhận tự động" />
+              <PayOption active={payment === 'cod'} onClick={() => setPayment('cod')} icon={<Banknote />} title="Thanh toán khi nhận hàng" desc="Trả tiền mặt cho tài xế" />
+            </div>
+          </Panel>
+
+          <Panel title="Ghi chú cho nhà hàng">
+            <TextArea label="" aria-label="Ghi chú cho nhà hàng" value={note} onChange={setNote} placeholder="Ví dụ: ít cay, không hành..." maxLength={300} />
+          </Panel>
+        </section>
+
+        <div className="lg:sticky lg:top-24 lg:self-start">
+          <Panel title="Đơn hàng của bạn">
+            <div className="flex flex-col gap-4">
+              <p className="text-sm font-semibold text-[#746b67]">{cart[0].restaurant_name}</p>
+              {cart.map(x => (
+                <div key={x.food_id} className="flex items-center gap-3">
+                  {x.image && <img src={x.image} alt="" className="size-14 rounded-lg object-cover" />}
+                  <div className="min-w-0 flex-1 text-sm"><b className="block truncate">{x.name}</b><p className="text-[#9c918c]">x{x.qty}</p></div>
+                  <span className="font-bold">{money(x.price * x.qty)}</span>
+                </div>
+              ))}
+              <div className="border-t border-[#f1e7e2] pt-4 text-sm">
+                <div className="flex justify-between text-[#746b67]"><span>Tạm tính</span><span>{money(cartSubtotal)}</span></div>
+                <div className="mt-3 flex justify-between text-[#746b67]"><span>Phí giao hàng</span>{fee ? <span>{money(fee)}</span> : <span className="text-[#72a77f]">Miễn phí</span>}</div>
+                <div className="mt-4 flex justify-between text-lg font-extrabold"><span>Tổng cộng</span><span className="text-[#ff5b35]">{money(cartSubtotal + fee)}</span></div>
+              </div>
+              <label className="flex cursor-pointer items-center gap-3 py-2 text-sm text-[#746b67]">
+                <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} className="size-5 shrink-0 accent-[#ff5b35]" /> Tôi đồng ý với điều khoản đặt hàng
+              </label>
+              {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
+              <Button disabled={busy} onClick={placeOrder} className="h-12 rounded-xl bg-[#ff5b35] text-base hover:bg-[#e94c29]">
+                {busy && <Loader2 className="animate-spin" />}{payment === 'qr' ? 'Đặt hàng & lấy mã QR' : 'Đặt hàng'}
+              </Button>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+function PayOption({ active, onClick, icon, title, desc }: { active: boolean; onClick: () => void; icon: React.ReactNode; title: string; desc: string }) {
+  return (
+    <button type="button" onClick={onClick} className={`rounded-xl p-4 text-left ${active ? 'border-2 border-[#ff5b35] bg-[#fff5f1]' : 'border border-[#eaded8]'}`}>
+      <span className={`mb-3 block ${active ? 'text-[#ff5b35]' : 'text-[#746b67]'}`}>{icon}</span>
+      <b>{title}</b>
+      <p className="mt-1 text-xs text-[#746b67]">{desc}</p>
+    </button>
+  )
+}
