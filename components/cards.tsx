@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { ArrowRight, Clock3, Heart, Loader2, Plus, Star } from 'lucide-react'
 import { useApp } from '@/components/app-provider'
 import { money } from '@/lib/format'
+import { useLocation } from '@/components/location-provider'
+import { distanceKm, formatKm, hasCoords } from '@/lib/geo'
 import type { Food, Restaurant } from '@/lib/types'
 
 export function SectionTitle({ title, href, action = 'Xem tất cả' }: { title: string; href?: string; action?: string }) {
@@ -19,6 +21,7 @@ export function FoodCard({ food }: { food: Food }) {
   const { addToCart, favoriteIds, toggleFavorite } = useApp()
   const liked = favoriteIds.includes(food.id)
   const restaurant = food.restaurants
+  const distance = useDistanceLabel(restaurant)
   return (
     <article className="group overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
       <div className="relative h-48 overflow-hidden">
@@ -40,7 +43,7 @@ export function FoodCard({ food }: { food: Food }) {
         </div>
         {restaurant && (
           <div className="mt-4 flex items-center gap-3 text-xs text-[#746b67]">
-            <span><Clock3 className="mr-1 inline size-3" />{restaurant.delivery_time}</span><span>• {restaurant.distance_km} km</span>
+            <span><Clock3 className="mr-1 inline size-3" />{restaurant.delivery_time}</span><span>• {distance}</span>
           </div>
         )}
         <div className="mt-4 flex items-center justify-between">
@@ -61,6 +64,7 @@ export function FoodCard({ food }: { food: Food }) {
 }
 
 export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
+  const distance = useDistanceLabel(restaurant)
   return (
     <Link href={`/restaurants/${restaurant.id}`} className="block overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
       {restaurant.image && <img src={restaurant.image} alt={restaurant.name} loading="lazy" className="h-36 w-full object-cover" />}
@@ -76,7 +80,7 @@ export function RestaurantCard({ restaurant }: { restaurant: Restaurant }) {
           <p className="mt-1 text-xs text-[#9c918c]">{restaurant.cuisine}</p>
           <div className="mt-4 flex gap-3 text-xs text-[#746b67]">
             <span><Star className="mr-1 inline size-3 fill-[#ffb21c] text-[#ffb21c]" />{Number(restaurant.rating).toFixed(1)} ({formatCount(restaurant.review_count)})</span>
-            <span>• {restaurant.distance_km} km</span>
+            <span>• {distance}</span>
             <span>• {restaurant.delivery_time}</span>
           </div>
         </div>
@@ -114,4 +118,11 @@ export function Panel({ title, action, children }: { title: string; action?: Rea
   )
 }
 
-export const FOOD_SELECT = '*, restaurants:fg_restaurants(id, name, delivery_time, distance_km)'
+export const FOOD_SELECT = '*, restaurants:fg_restaurants(id, name, delivery_time, distance_km, lat, lng)'
+
+/** Real distance from the customer's detected location, falling back to the stored estimate. */
+export function useDistanceLabel(r: { distance_km: number; lat: number | null; lng: number | null } | null | undefined) {
+  const { place } = useLocation()
+  if (!r) return ''
+  return place && hasCoords(r) ? formatKm(distanceKm(place, r)) : `${r.distance_km} km`
+}

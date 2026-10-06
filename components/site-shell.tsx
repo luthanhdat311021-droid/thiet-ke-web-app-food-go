@@ -4,11 +4,13 @@ import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useRef, useState } from 'react'
 import {
-  Bell, ChevronDown, Heart, Home, LayoutDashboard, LogIn, LogOut, MapPin, Minus, Package, Plus,
+  Bell, ChevronDown, Heart, Home, LayoutDashboard, Loader2, LogIn, LogOut, MapPin, Minus, Package, Plus,
   Search, ShoppingBag, ShoppingCart, Trash2, User, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
+import { useLocation } from '@/components/location-provider'
+import { ROUGH_ACCURACY_M } from '@/lib/geo'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money, shippingFee, FREE_SHIP_FROM, timeAgo } from '@/lib/format'
 
@@ -67,6 +69,31 @@ function SearchBox() {
   )
 }
 
+/** "Giao đến …" – the customer's detected address; tap to (re)locate. */
+function LocationChip() {
+  const { place, status, error, locate } = useLocation()
+  const rough = status === 'ready' && (place?.accuracy ?? 0) > ROUGH_ACCURACY_M
+  const text = status === 'locating' ? 'Đang xác định vị trí...'
+    : place ? place.address
+    : status === 'error' ? error
+    : 'Chọn vị trí giao hàng'
+  return (
+    <button
+      onClick={() => locate()}
+      title={place?.address ?? 'Lấy vị trí hiện tại'}
+      className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm hover:bg-[#fff5f1] sm:max-w-[240px] sm:flex-none xl:max-w-xs"
+    >
+      {status === 'locating' ? <Loader2 className="size-4 shrink-0 animate-spin text-[#ff5b35]" /> : <MapPin className="size-4 shrink-0 text-[#ff5b35]" />}
+      <span className="min-w-0">
+        <span className="block text-[11px] leading-tight text-[#9c918c]">
+          Giao đến{rough && <span className="text-[#c2410c]"> • vị trí ước tính, bấm để thử lại</span>}
+        </span>
+        <b className={`block truncate leading-tight ${status === 'error' ? 'font-semibold text-[#c2410c]' : 'text-[#241c19]'}`}>{text}</b>
+      </span>
+    </button>
+  )
+}
+
 function useClickOutside(onOutside: () => void) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -90,7 +117,7 @@ function Header() {
     <header className="sticky top-0 z-30 border-b border-[#f1e7e2] bg-white/95 backdrop-blur">
       <div ref={ref} className="relative mx-auto flex max-w-[1400px] flex-wrap items-center gap-x-5 gap-y-3 px-5 py-3 sm:h-20 sm:flex-nowrap sm:py-0 lg:px-10">
         <Logo />
-        <div className="hidden items-center gap-2 text-sm text-[#746b67] xl:flex"><MapPin className="size-4 text-[#ff5b35]" /><span>Giao đến</span><b className="text-[#241c19]">TP. Hồ Chí Minh</b></div>
+        <LocationChip />
         <Suspense fallback={<div className="order-last h-12 w-full sm:order-none sm:ml-auto sm:max-w-lg" />}><SearchBox /></Suspense>
         <Link href="/account?tab=favorites" aria-label="Món yêu thích" className="hidden rounded-xl p-3 text-[#746b67] hover:bg-[#fff1ec] hover:text-[#ff5b35] lg:block"><Heart /></Link>
         {user && (

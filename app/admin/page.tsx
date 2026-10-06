@@ -289,6 +289,8 @@ function RestaurantsAdmin() {
         { key: 'name', label: 'Tên nhà hàng', type: 'text', required: true },
         { key: 'cuisine', label: 'Loại món (VD: Cơm Việt • Món gia đình)', type: 'text' },
         { key: 'address', label: 'Địa chỉ', type: 'text', wide: true },
+        { key: 'lat', label: 'Vĩ độ (VD: 10.7739) – chuột phải trên Google Maps để lấy', type: 'number' },
+        { key: 'lng', label: 'Kinh độ (VD: 106.7009)', type: 'number' },
         { key: 'delivery_time', label: 'Thời gian giao', type: 'text', required: true },
         { key: 'distance_km', label: 'Khoảng cách (km)', type: 'number' },
         { key: 'rating', label: 'Đánh giá (0-5)', type: 'number' },

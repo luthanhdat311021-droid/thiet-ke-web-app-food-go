@@ -13,6 +13,8 @@ export type Restaurant = {
   delivery_time: string
   tag: string | null
   is_active: boolean
+  lat: number | null
+  lng: number | null
 }
 
 export type Food = {
@@ -28,7 +30,7 @@ export type Food = {
   sold_count: number
   is_available: boolean
   is_popular: boolean
-  restaurants?: Pick<Restaurant, 'id' | 'name' | 'delivery_time' | 'distance_km'> | null
+  restaurants?: Pick<Restaurant, 'id' | 'name' | 'delivery_time' | 'distance_km' | 'lat' | 'lng'> | null
 }
 
 export type Profile = {
@@ -48,6 +50,8 @@ export type Address = {
   phone: string
   address: string
   is_default: boolean
+  lat: number | null
+  lng: number | null
 }
 
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'picking_up' | 'delivering' | 'delivered' | 'cancelled'
@@ -73,7 +77,10 @@ export type Order = {
   paid_at: string | null
   created_at: string
   updated_at: string
+  delivery_lat: number | null
+  delivery_lng: number | null
   order_items?: OrderItem[]
+  restaurant?: Pick<Restaurant, 'lat' | 'lng' | 'address'> | null
 }
 
 export type Notification = { id: number; order_id: number | null; title: string; body: string | null; is_read: boolean; created_at: string }

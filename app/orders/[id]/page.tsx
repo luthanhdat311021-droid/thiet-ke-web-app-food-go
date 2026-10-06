@@ -7,6 +7,7 @@ import { Bike, Check, CheckCircle2, Copy, Loader2, MapPin, Package, Phone, Rotat
 import { Button } from '@/components/ui/button'
 import { RequireAuth } from '@/components/require-auth'
 import { EmptyState, Panel, Spinner } from '@/components/cards'
+import { OrderTrackingMap } from '@/components/order-tracking-map'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
 import { formatDateTime, money, ORDER_STEPS, STATUS_LABEL, STATUS_STYLE, vietQrUrl } from '@/lib/format'
@@ -26,7 +27,7 @@ function OrderDetail() {
 
   useEffect(() => {
     const oid = Number(id)
-    const load = () => supabase.from('fg_orders').select('*, order_items:fg_order_items(*)').eq('id', oid).maybeSingle()
+    const load = () => supabase.from('fg_orders').select('*, order_items:fg_order_items(*), restaurant:fg_restaurants(lat, lng, address)').eq('id', oid).maybeSingle()
       .then(({ data }) => setOrder(data as Order | null))
     load()
     const channel = supabase.channel(`order-${oid}`)
@@ -84,7 +85,7 @@ function OrderDetail() {
       </div>
       <p className="mt-1 text-sm text-[#9c918c]">{formatDateTime(order.created_at)}</p>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_420px]">
+      <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="flex flex-col gap-6">
           {awaitingQr && (
             <Panel title="Thanh toán chuyển khoản">
@@ -104,6 +105,8 @@ function OrderDetail() {
               </div>
             </Panel>
           )}
+
+          <OrderTrackingMap order={order} />
 
           <Panel title="Trạng thái đơn hàng">
             {cancelled ? (
@@ -156,19 +159,6 @@ function OrderDetail() {
               </div>
             </div>
           </Panel>
-
-          {(order.status === 'picking_up' || order.status === 'delivering') && (
-            <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
-              <div className="flex h-48 items-center justify-center bg-[#dcebe5] bg-[radial-gradient(#a7c8b9_1px,transparent_1px)] [background-size:22px_22px]">
-                <div className="grid size-16 place-items-center rounded-full border-8 border-white bg-[#ff5b35] text-white shadow-xl"><Bike /></div>
-              </div>
-              <div className="flex items-center gap-3 p-5">
-                <span className="grid size-12 place-items-center rounded-full bg-[#ffe0d5] font-bold text-[#ff5b35]">TX</span>
-                <div className="flex-1"><b>Tài xế FoodGo</b><p className="text-xs text-[#746b67]">Đang trên đường đến bạn</p></div>
-                <a href="tel:19001234" aria-label="Gọi tài xế" className="grid size-10 place-items-center rounded-full bg-[#e4f8eb] text-[#3eaa68]"><Phone className="size-4" /></a>
-              </div>
-            </div>
-          )}
 
           <div className="flex flex-col gap-3">
             {order.status === 'pending' && order.payment_status === 'unpaid' && (

@@ -9,6 +9,9 @@ import type { Category, Food, Restaurant } from '@/lib/types'
 import { money } from '@/lib/format'
 import { useApp } from '@/components/app-provider'
 import { EmptyState, Spinner } from '@/components/cards'
+import { useLocation } from '@/components/location-provider'
+import { FoodMap } from '@/components/map'
+import { distanceKm, formatKm, hasCoords } from '@/lib/geo'
 
 export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>()
@@ -16,6 +19,8 @@ export default function RestaurantPage() {
   const [foods, setFoods] = useState<Food[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const { cart, setQty, addToCart, favoriteIds, toggleFavorite, setCartOpen, cartSubtotal } = useApp()
+  const { place } = useLocation()
+  const [showMap, setShowMap] = useState(false)
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setRestaurant(null); return }
@@ -42,6 +47,7 @@ export default function RestaurantPage() {
     return <main className="mx-auto max-w-3xl px-5 py-16"><EmptyState icon={<Store />} title="Không tìm thấy nhà hàng"><Link href="/search?tab=restaurants" className="font-bold text-[#ff5b35]">Xem các nhà hàng khác</Link></EmptyState></main>
   }
 
+  const distance = place && hasCoords(restaurant) ? formatKm(distanceKm(place, restaurant)) : `${restaurant.distance_km} km`
   const cartHere = cart.filter(x => x.restaurant_id === restaurant.id)
   const cartHereCount = cartHere.reduce((s, x) => s + x.qty, 0)
 
@@ -65,11 +71,27 @@ export default function RestaurantPage() {
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#746b67]">
               <span><Star className="mr-1 inline size-3 fill-[#ffb21c] text-[#ffb21c]" />{Number(restaurant.rating).toFixed(1)} ({restaurant.review_count} đánh giá)</span>
               <span><Clock3 className="mr-1 inline size-3" />{restaurant.delivery_time}</span>
-              <span><MapPin className="mr-1 inline size-3" />{restaurant.distance_km} km{restaurant.address ? ` • ${restaurant.address}` : ''}</span>
+              <span><MapPin className="mr-1 inline size-3" />{distance}{restaurant.address ? ` • ${restaurant.address}` : ''}</span>
             </div>
           </div>
         </div>
       </div>
+
+      {hasCoords(restaurant) && (
+        <div className="mx-5 mt-4 overflow-hidden rounded-2xl bg-white shadow-sm lg:mx-10">
+          <button onClick={() => setShowMap(s => !s)} className="flex w-full items-center justify-between px-5 py-3 text-sm font-bold">
+            <span className="flex items-center gap-2"><MapPin className="size-4 text-[#ff5b35]" />Xem vị trí trên bản đồ</span>
+            <span className="text-[#ff5b35]">{showMap ? 'Thu gọn' : 'Mở'}</span>
+          </button>
+          {showMap && <FoodMap
+            className="h-60"
+            markers={[
+              { id: 'r', kind: 'restaurant', pos: [restaurant.lat, restaurant.lng], label: restaurant.name },
+              ...(place ? [{ id: 'me', kind: 'home' as const, pos: [place.lat, place.lng] as [number, number], label: 'Bạn' }] : []),
+            ]}
+          />}
+        </div>
+      )}
 
       <div className="px-5 lg:px-10">
         {groups.length > 1 && (

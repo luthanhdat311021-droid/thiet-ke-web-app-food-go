@@ -4,6 +4,7 @@ import './globals.css'
 import { AppProvider } from '@/components/app-provider'
 import { SiteShell } from '@/components/site-shell'
 import { NativeBridge } from '@/components/native-bridge'
+import { LocationProvider } from '@/components/location-provider'
 
 export const metadata: Metadata = {
   title: 'FoodGo – Món ngon giao tận cửa',
@@ -43,8 +44,10 @@ export default function RootLayout({
     <html lang="vi">
       <body className="antialiased">
         <AppProvider>
-          <NativeBridge />
-          <SiteShell>{children}</SiteShell>
+          <LocationProvider>
+            <NativeBridge />
+            <SiteShell>{children}</SiteShell>
+          </LocationProvider>
         </AppProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

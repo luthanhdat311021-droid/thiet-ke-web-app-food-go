@@ -34,7 +34,7 @@ function Account() {
   return (
     <main className="mx-auto max-w-[1100px] px-5 pb-24 pt-8 lg:px-10">
       <h1 className="text-3xl font-extrabold">Tài khoản</h1>
-      <div className="mt-8 grid gap-6 md:grid-cols-[240px_1fr]">
+      <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="flex gap-1 overflow-x-auto rounded-2xl bg-white p-3 shadow-sm md:flex-col md:self-start">
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => router.replace(`${pathname}?tab=${id}`, { scroll: false })}
