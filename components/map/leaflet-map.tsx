@@ -63,7 +63,7 @@ export default function LeafletMap({ markers = [], route, picker, onPick, fitPoi
     () => fitPoints ?? [...markers.map(m => m.pos), ...(picker ? [[picker.lat, picker.lng] as [number, number]] : [])],
     [fitPoints, markers, picker],
   )
-  const center = fit[0] ?? [10.7769, 106.7009] // TP.HCM
+  const center = fit[0] ?? [10.9806, 106.6744] // Trường ĐH Thủ Dầu Một
 
   return (
     <MapContainer center={center} zoom={15} scrollWheelZoom={false} className={`z-0 w-full ${className}`} attributionControl>

@@ -17,7 +17,7 @@ type AppContextValue = {
   cart: CartItem[]
   cartCount: number
   cartSubtotal: number
-  addToCart: (food: Food, restaurantName: string, qty?: number) => void
+  addToCart: (food: Food, qty?: number) => void
   setQty: (foodId: number, qty: number) => void
   replaceCart: (items: CartItem[]) => boolean
   clearCart: () => void
@@ -73,18 +73,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(CART_KEY, JSON.stringify(cart)) } catch {}
   }, [cart])
 
-  const addToCart = useCallback((food: Food, restaurantName: string, qty = 1) => {
+  // single shop: every dish can go in the same cart
+  const addToCart = useCallback((food: Food, qty = 1) => {
     if (!food.is_available) return toast('Món này tạm hết', 'error')
-    const otherRestaurant = cart.length > 0 && cart[0].restaurant_id !== food.restaurant_id
-    if (otherRestaurant && !window.confirm(`Giỏ hàng đang có món của ${cart[0].restaurant_name}. Xóa giỏ hàng để đặt món từ ${restaurantName}?`)) return
-    setCart(c => {
-      const current = otherRestaurant ? [] : c
-      return current.some(x => x.food_id === food.id)
-        ? current.map(x => (x.food_id === food.id ? { ...x, qty: Math.min(50, x.qty + qty) } : x))
-        : [...current, { food_id: food.id, name: food.name, price: food.price, image: food.image, restaurant_id: food.restaurant_id, restaurant_name: restaurantName, qty }]
-    })
+    setCart(c => c.some(x => x.food_id === food.id)
+      ? c.map(x => (x.food_id === food.id ? { ...x, qty: Math.min(50, x.qty + qty) } : x))
+      : [...c, { food_id: food.id, name: food.name, price: food.price, image: food.image, restaurant_id: food.restaurant_id, restaurant_name: 'FoodGo', qty }])
     toast(`Đã thêm ${food.name} vào giỏ`)
-  }, [cart, toast])
+  }, [toast])
 
   const replaceCart = useCallback((items: CartItem[]) => {
     if (cart.length && !window.confirm('Thay giỏ hàng hiện tại bằng các món trong đơn này?')) return false

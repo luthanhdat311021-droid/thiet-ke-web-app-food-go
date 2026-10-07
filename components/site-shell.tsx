@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useRef, useState } from 'react'
 import {
   Bell, ChevronDown, Heart, Home, LayoutDashboard, Loader2, LogIn, LogOut, MapPin, Minus, Package, Plus,
-  Search, ShoppingBag, ShoppingCart, Trash2, User, X,
+  Search, ShoppingBag, ShoppingCart, Trash2, User, UtensilsCrossed, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
@@ -62,7 +62,7 @@ function SearchBox() {
         value={q}
         onChange={e => setQ(e.target.value)}
         placeholder="Bạn muốn ăn gì hôm nay?"
-        aria-label="Tìm món ăn hoặc nhà hàng"
+        aria-label="Tìm món ăn"
         className="h-12 w-full rounded-xl bg-[#f8f3f0] pl-12 pr-4 text-sm outline-none ring-[#ff5b35] transition focus:ring-2"
       />
     </form>
@@ -189,7 +189,7 @@ function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-20 flex justify-around border-t border-[#f1e7e2] bg-white p-3 sm:hidden">
       {item('/', 'Trang chủ', <Home />, pathname === '/')}
-      {item('/search', 'Tìm kiếm', <Search />, pathname.startsWith('/search') || pathname.startsWith('/restaurants'))}
+      {item('/menu', 'Thực đơn', <UtensilsCrossed />, pathname.startsWith('/menu') || pathname.startsWith('/search'))}
       {item('/orders', 'Đơn hàng', <Package />, pathname.startsWith('/orders'))}
       <button onClick={() => setCartOpen(true)} className="relative flex flex-col items-center gap-1 text-xs text-[#9c918c]">
         <ShoppingBag />
@@ -216,10 +216,10 @@ function CartDrawer() {
   return (
     <div className="fixed inset-0 z-40 bg-black/30" onClick={() => setCartOpen(false)}>
       <aside role="dialog" aria-label="Giỏ hàng" onClick={e => e.stopPropagation()} className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
-        <div className="flex items-center justify-between p-6 pb-0">
+        <div className="flex items-center justify-between px-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
           <div>
-            <p className="text-xs font-bold text-[#ff5b35]">GIỎ HÀNG CỦA BẠN</p>
-            <h2 className="mt-1 text-2xl font-extrabold">{cart[0]?.restaurant_name ?? 'Giỏ hàng'}</h2>
+            <p className="text-xs font-bold text-[#ff5b35]">QUÁN FOODGO</p>
+            <h2 className="mt-1 text-2xl font-extrabold">Giỏ hàng của bạn</h2>
           </div>
           <button aria-label="Đóng giỏ hàng" onClick={() => setCartOpen(false)} className="grid size-10 place-items-center rounded-full bg-[#f8f3f0]"><X /></button>
         </div>
@@ -245,12 +245,12 @@ function CartDrawer() {
             <div className="py-20 text-center">
               <ShoppingBag className="mx-auto size-12 text-[#ffb9a5]" />
               <h3 className="mt-4 font-bold">Giỏ hàng đang trống</h3>
-              <Button onClick={() => { setCartOpen(false); router.push('/search') }} variant="outline" className="mt-5 h-11 rounded-xl px-5">Khám phá món ăn</Button>
+              <Button onClick={() => { setCartOpen(false); router.push('/menu') }} variant="outline" className="mt-5 h-11 rounded-xl px-5">Xem thực đơn</Button>
             </div>
           )}
           {cart.length > 0 && <button onClick={clearCart} className="mt-4 py-2 text-sm font-semibold text-[#9c918c] hover:text-red-500">Xóa tất cả</button>}
         </div>
-        <div className="border-t border-[#f1e7e2] p-6">
+        <div className="border-t border-[#f1e7e2] px-6 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           <div className="flex justify-between text-sm text-[#746b67]"><span>Tạm tính</span><b className="text-[#241c19]">{money(cartSubtotal)}</b></div>
           <div className="mt-3 flex justify-between text-sm text-[#746b67]"><span>Phí giao hàng</span>{fee ? <b className="text-[#241c19]">{money(fee)}</b> : <b className="text-[#72a77f]">Miễn phí</b>}</div>
           {cart.length > 0 && fee > 0 && <p className="mt-2 text-xs text-[#9c918c]">Mua thêm {money(FREE_SHIP_FROM - cartSubtotal)} để được miễn phí giao hàng</p>}

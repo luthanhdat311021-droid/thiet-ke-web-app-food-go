@@ -4,23 +4,22 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-import type { Category, Food, Restaurant } from '@/lib/types'
-import { CardSkeleton, FoodCard, FOOD_SELECT, RestaurantCard, SectionTitle } from '@/components/cards'
+import type { Category, Food } from '@/lib/types'
+import { useStore } from '@/lib/store'
+import { CardSkeleton, FoodCard, SectionTitle, StoreCard } from '@/components/cards'
 
 const HERO_IMAGE = 'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&q=85'
 
 export default function HomePage() {
+  const store = useStore()
   const [categories, setCategories] = useState<Category[] | null>(null)
   const [foods, setFoods] = useState<Food[] | null>(null)
-  const [restaurants, setRestaurants] = useState<Restaurant[] | null>(null)
 
   useEffect(() => {
-    if (!isSupabaseConfigured) { setCategories([]); setFoods([]); setRestaurants([]); return }
+    if (!isSupabaseConfigured) { setCategories([]); setFoods([]); return }
     supabase.from('fg_categories').select('*').order('sort').then(({ data }) => setCategories((data ?? []) as Category[]))
-    supabase.from('fg_foods').select(FOOD_SELECT).eq('is_popular', true).order('sold_count', { ascending: false }).limit(6)
+    supabase.from('fg_foods').select('*').eq('is_popular', true).order('sold_count', { ascending: false }).limit(6)
       .then(({ data }) => setFoods((data ?? []) as Food[]))
-    supabase.from('fg_restaurants').select('*').order('rating', { ascending: false }).limit(6)
-      .then(({ data }) => setRestaurants((data ?? []) as Restaurant[]))
   }, [])
 
   return (
@@ -29,8 +28,8 @@ export default function HomePage() {
         <div className="relative z-10 max-w-xl">
           <span className="rounded-full bg-white px-4 py-2 text-xs font-bold text-[#ff5b35]">GIAO HÀNG NHANH • TẬN TÂM</span>
           <h1 className="mt-5 text-4xl font-extrabold leading-tight tracking-tight md:text-6xl">Món ngon<br /><span className="text-[#ff5b35]">giao tận cửa</span></h1>
-          <p className="mt-4 max-w-md text-base leading-7 text-[#746b67]">Khám phá hàng nghìn món ăn hấp dẫn từ những nhà hàng yêu thích quanh bạn.</p>
-          <Link href="/search" className="mt-7 inline-flex h-12 items-center gap-2 rounded-xl bg-[#ff5b35] px-6 text-sm font-semibold text-white hover:bg-[#e94c29]">Đặt món ngay <ArrowRight className="size-4" /></Link>
+          <p className="mt-4 max-w-md text-base leading-7 text-[#746b67]">Cơm, gà rán, pizza, trà sữa… nấu mới mỗi ngày tại quán FoodGo, giao nhanh quanh ĐH Thủ Dầu Một.</p>
+          <Link href="/menu" className="mt-7 inline-flex h-12 items-center gap-2 rounded-xl bg-[#ff5b35] px-6 text-sm font-semibold text-white hover:bg-[#e94c29]">Xem thực đơn <ArrowRight className="size-4" /></Link>
           <img className="mt-8 h-48 w-full rounded-2xl object-cover md:hidden" src={`${HERO_IMAGE}&w=800`} alt="Món ăn Việt hấp dẫn" />
         </div>
         <div className="absolute -right-10 -top-16 hidden h-[130%] w-1/2 overflow-hidden rounded-full md:block">
@@ -39,7 +38,7 @@ export default function HomePage() {
       </section>
 
       <section className="mt-12">
-        <SectionTitle title="Bạn muốn ăn gì?" href="/search" />
+        <SectionTitle title="Bạn muốn ăn gì?" href="/menu" action="Xem thực đơn" />
         <div className="mt-5 flex gap-4 overflow-x-auto pb-3">
           {categories === null && <CardSkeleton count={8} className="h-[124px] min-w-[100px]" />}
           {categories?.map(c => (
@@ -54,18 +53,18 @@ export default function HomePage() {
       </section>
 
       <section className="mt-12">
-        <SectionTitle title="Món ăn phổ biến" href="/search?sort=popular" />
+        <SectionTitle title="Món bán chạy" href="/menu" action="Toàn bộ thực đơn" />
         <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {foods === null ? <CardSkeleton count={3} /> : foods.map(f => <FoodCard key={f.id} food={f} />)}
         </div>
       </section>
 
-      <section className="mt-12">
-        <SectionTitle title="Nhà hàng gần bạn" href="/search?tab=restaurants" />
-        <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {restaurants === null ? <CardSkeleton count={3} className="h-64" /> : restaurants.map(r => <RestaurantCard key={r.id} restaurant={r} />)}
-        </div>
-      </section>
+      {store && (
+        <section className="-mx-5 mt-12 lg:-mx-10">
+          <h2 className="mb-5 px-5 text-2xl font-extrabold tracking-tight lg:px-10">Về quán</h2>
+          <StoreCard store={store} />
+        </section>
+      )}
     </main>
   )
 }

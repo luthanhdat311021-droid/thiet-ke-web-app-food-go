@@ -4,8 +4,8 @@ const UA = 'FoodGo/1.0 (+https://thiet-ke-web-app-food-go.vercel.app)'
 
 type Hit = { lat: string; lon: string; display_name: string }
 
-// central Ho Chi Minh City, where the restaurants deliver
-const CITY_BOX = '106.55,10.92,106.85,10.68'
+// Thủ Dầu Một area (around Thu Dau Mot University), where the restaurants deliver
+const CITY_BOX = '106.58,11.06,106.76,10.90'
 
 async function nominatim(q: string, bounded: boolean): Promise<Hit | null> {
   const params = new URLSearchParams({ q, format: 'jsonv2', countrycodes: 'vn', limit: '1', 'accept-language': 'vi', viewbox: CITY_BOX, bounded: bounded ? '1' : '0' })

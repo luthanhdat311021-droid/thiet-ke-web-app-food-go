@@ -1,46 +1,28 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
+const clean = (v?: string) => v?.replace(/^﻿/, '').trim()
+
 /**
- * Webhook nhận biến động số dư từ SePay (https://sepay.vn) để tự động xác nhận
- * đơn chuyển khoản QR. Cấu hình trong SePay: URL = https://<domain>/api/payment/webhook,
- * kiểu xác thực "API Key" = giá trị SEPAY_WEBHOOK_KEY.
+ * SePay webhook (https://docs.sepay.vn/tich-hop-webhooks.html): bank balance changes for the
+ * "Chuyển khoản QR" orders. SePay config: URL = https://<domain>/api/payment/webhook,
+ * auth = "API Key" with the value stored in fg_secrets.sepay_api_key.
  *
- * Payload SePay (rút gọn): { id, gateway, transactionDate, accountNumber, content,
- *   transferType: 'in' | 'out', transferAmount, referenceCode, ... }
+ * The key check, duplicate protection (by SePay transaction id), order matching and the
+ * "paid" update all happen inside fg_sepay_confirm(), so only the public anon key is needed here.
  */
 export async function POST(req: Request) {
-  const expected = process.env.SEPAY_WEBHOOK_KEY
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!expected || !serviceKey || !url) {
-    return NextResponse.json({ success: false, message: 'Webhook chưa được cấu hình' }, { status: 503 })
+  const apiKey = req.headers.get('authorization')?.replace(/^Apikey\s+/i, '') ?? ''
+  const payload = await req.json().catch(() => null)
+  if (!payload) return NextResponse.json({ success: false, message: 'invalid body' }, { status: 400 })
+
+  const supabase = createClient(clean(process.env.NEXT_PUBLIC_SUPABASE_URL)!, clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!, { auth: { persistSession: false } })
+  const { data, error } = await supabase.rpc('fg_sepay_confirm', { p: payload, p_key: apiKey })
+  if (error) {
+    console.error('sepay webhook', error.message)
+    return NextResponse.json({ success: false, message: 'server error' }, { status: 500 }) // SePay retries
   }
-  if (req.headers.get('authorization') !== `Apikey ${expected}`) {
-    return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 })
-  }
-
-  const body = await req.json().catch(() => null) as { transferType?: string; transferAmount?: number; content?: string; code?: string } | null
-  if (!body || body.transferType !== 'in') return NextResponse.json({ success: true, message: 'ignored' })
-
-  // Ngân hàng có thể chèn thêm ký tự vào nội dung CK, nên tìm mã đơn FGxxxxxxxx trong chuỗi
-  const text = `${body.code ?? ''} ${body.content ?? ''}`.toUpperCase()
-  const code = text.match(/FG[0-9A-F]{8}/)?.[0]
-  if (!code) return NextResponse.json({ success: true, message: 'no order code' })
-
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
-  const { data: order } = await admin.from('fg_orders').select('id, total, payment_status, status').eq('code', code).maybeSingle()
-  if (!order) return NextResponse.json({ success: true, message: 'order not found' })
-  if (order.payment_status === 'paid') return NextResponse.json({ success: true, message: 'already paid' })
-  if (Number(body.transferAmount) < order.total) {
-    return NextResponse.json({ success: true, message: `amount ${body.transferAmount} < ${order.total}` })
-  }
-
-  const { error } = await admin.from('fg_orders').update({
-    payment_status: 'paid',
-    // tự xác nhận đơn khi đã nhận tiền
-    ...(order.status === 'pending' ? { status: 'confirmed' } : {}),
-  }).eq('id', order.id)
-  if (error) return NextResponse.json({ success: false, message: error.message }, { status: 500 })
-  return NextResponse.json({ success: true, message: `paid ${code}` })
+  if (data === 'unauthorized') return NextResponse.json({ success: false, message: 'unauthorized' }, { status: 401 })
+  // every other outcome (ok, duplicate, no matching order, amount too low…) is final – don't make SePay retry
+  return NextResponse.json({ success: true, message: data })
 }

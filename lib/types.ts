@@ -15,7 +15,30 @@ export type Restaurant = {
   is_active: boolean
   lat: number | null
   lng: number | null
+  /** "HH:MM:SS", Vietnam time; null = no fixed hours */
+  open_time: string | null
+  close_time: string | null
+  /** manual "tạm đóng cửa" switch */
+  is_open: boolean
 }
+
+export type Voucher = {
+  id: number
+  code: string
+  description: string | null
+  discount_type: 'percent' | 'amount' | 'freeship'
+  discount_value: number
+  max_discount: number | null
+  min_subtotal: number
+  usage_limit: number | null
+  per_user_limit: number | null
+  starts_on: string | null
+  expires_on: string | null
+  is_active: boolean
+}
+
+/** fg_check_voucher() result */
+export type VoucherQuote = { code: string; description: string | null; type: Voucher['discount_type']; discount: number }
 
 export type Food = {
   id: number
@@ -27,6 +50,7 @@ export type Food = {
   old_price: number | null
   image: string | null
   rating: number
+  review_count: number
   sold_count: number
   is_available: boolean
   is_popular: boolean
@@ -65,10 +89,12 @@ export type Order = {
   restaurant_id: number | null
   restaurant_name: string
   status: OrderStatus
-  payment_method: 'cod' | 'qr'
+  payment_method: 'cod' | 'qr' | 'momo'
   payment_status: 'unpaid' | 'paid' | 'refunded'
   subtotal: number
   shipping_fee: number
+  discount: number
+  voucher_code: string | null
   total: number
   recipient: string
   phone: string
@@ -79,11 +105,25 @@ export type Order = {
   updated_at: string
   delivery_lat: number | null
   delivery_lng: number | null
+  momo_trans_id?: string | null
+  delivered_at?: string | null
   order_items?: OrderItem[]
   restaurant?: Pick<Restaurant, 'lat' | 'lng' | 'address'> | null
 }
 
-export type Notification = { id: number; order_id: number | null; title: string; body: string | null; is_read: boolean; created_at: string }
+export type Review = {
+  id: number
+  user_id: string
+  order_id: number
+  food_id: number
+  reviewer_name: string
+  rating: number
+  comment: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type Notification ={ id: number; order_id: number | null; title: string; body: string | null; is_read: boolean; created_at: string }
 
 export type CartItem = {
   food_id: number

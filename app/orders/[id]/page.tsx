@@ -8,9 +8,12 @@ import { Button } from '@/components/ui/button'
 import { RequireAuth } from '@/components/require-auth'
 import { EmptyState, Panel, Spinner } from '@/components/cards'
 import { OrderTrackingMap } from '@/components/order-tracking-map'
+import { OrderReviewPanel } from '@/components/reviews'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
-import { formatDateTime, money, ORDER_STEPS, STATUS_LABEL, STATUS_STYLE, vietQrUrl } from '@/lib/format'
+import { formatDateTime, money, ORDER_STEPS, PAYMENT_LABEL, STATUS_LABEL, STATUS_STYLE, vietQrUrl } from '@/lib/format'
+import { MOMO_RETURN_KEYS, startMomoPayment } from '@/lib/momo'
+import { MomoIcon } from '@/components/momo-icon'
 import type { CartItem, Food, Order } from '@/lib/types'
 
 export default function OrderDetailPage() {
@@ -19,11 +22,26 @@ export default function OrderDetailPage() {
 
 function OrderDetail() {
   const { id } = useParams<{ id: string }>()
-  const isNew = useSearchParams().get('new') === '1'
+  const params = useSearchParams()
+  const isNew = params.get('new') === '1'
   const router = useRouter()
   const { replaceCart, setCartOpen, toast } = useApp()
   const [order, setOrder] = useState<Order | null | undefined>(undefined)
   const [busy, setBusy] = useState(false)
+  const [momoBusy, setMomoBusy] = useState(false)
+
+  // back from MoMo: /orders/<id>?partnerCode=...&resultCode=...&signature=...
+  useEffect(() => {
+    if (!params.get('signature') || params.get('resultCode') === null) return
+    const payload = Object.fromEntries(MOMO_RETURN_KEYS.map(k => [k, params.get(k) ?? '']))
+    supabase.rpc('fg_momo_confirm', { p: payload }).then(({ data, error }) => {
+      if (error) toast(errorMessage(error), 'error')
+      else if (data === 'ok' || data === 'already_paid') toast('Thanh toán MoMo thành công')
+      else if (data === 'failed') toast(`Thanh toán MoMo chưa thành công${payload.message ? `: ${payload.message}` : ''}`, 'error')
+      else toast('Không xác minh được giao dịch MoMo', 'error')
+      router.replace(`/orders/${id}`)
+    })
+  }, [params, id, router, toast])
 
   useEffect(() => {
     const oid = Number(id)
@@ -36,6 +54,12 @@ function OrderDetail() {
     return () => { supabase.removeChannel(channel) }
   }, [id])
 
+  // from "Đánh giá" in the orders list: the review panel only exists once the order has loaded
+  const loaded = !!order
+  useEffect(() => {
+    if (loaded && window.location.hash === '#danh-gia') document.getElementById('danh-gia')?.scrollIntoView({ behavior: 'smooth' })
+  }, [loaded])
+
   if (order === undefined) return <Spinner />
   if (order === null) return <main className="mx-auto max-w-2xl px-5 py-16"><EmptyState icon={<Package />} title="Không tìm thấy đơn hàng"><Link href="/orders" className="font-bold text-[#ff5b35]">Về danh sách đơn</Link></EmptyState></main>
 
@@ -43,9 +67,18 @@ function OrderDetail() {
   const stepIndex = ORDER_STEPS.findIndex(s => s.status === order.status)
   const awaitingQr = order.payment_method === 'qr' && order.payment_status === 'unpaid' && !cancelled
   const qr = awaitingQr ? vietQrUrl(order.total, order.code) : null
+  const awaitingMomo = order.payment_method === 'momo' && order.payment_status === 'unpaid' && !cancelled
+
+  const payWithMomo = async () => {
+    setMomoBusy(true)
+    try { await startMomoPayment(order.id) } catch (e) { toast(errorMessage(e), 'error'); setMomoBusy(false) }
+  }
 
   const cancel = async () => {
-    if (!window.confirm('Bạn chắc chắn muốn hủy đơn hàng này?')) return
+    const msg = order.payment_status === 'paid'
+      ? 'Bạn chắc chắn muốn hủy đơn? Đơn đã thanh toán, quán sẽ hoàn tiền cho bạn.'
+      : 'Bạn chắc chắn muốn hủy đơn hàng này?'
+    if (!window.confirm(msg)) return
     setBusy(true)
     const { error } = await supabase.rpc('fg_cancel_order', { p_order_id: order.id })
     setBusy(false)
@@ -75,7 +108,7 @@ function OrderDetail() {
       {isNew && (
         <div className="mt-5 flex items-center gap-3 rounded-2xl bg-[#e4f8eb] p-4 text-[#2f7d4f]">
           <CheckCircle2 className="shrink-0" />
-          <p className="text-sm"><b>Đặt hàng thành công!</b> {awaitingQr ? 'Quét mã QR bên dưới để thanh toán.' : 'Nhà hàng sẽ xác nhận đơn trong giây lát.'}</p>
+          <p className="text-sm"><b>Đặt hàng thành công!</b> {awaitingQr ? 'Quét mã QR bên dưới để thanh toán.' : 'Quán sẽ xác nhận đơn trong giây lát.'}</p>
         </div>
       )}
 
@@ -87,11 +120,25 @@ function OrderDetail() {
 
       <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="flex flex-col gap-6">
+          {awaitingMomo && (
+            <Panel title="Thanh toán bằng ví MoMo">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <MomoIcon className="h-12 w-16 text-sm" />
+                <div className="flex-1 text-sm">
+                  <p><b>{money(order.total)}</b> — đơn chưa được thanh toán.</p>
+                  <p className="mt-1 text-[#746b67]">Bấm nút để mở trang thanh toán MoMo. Trang này sẽ tự cập nhật khi thanh toán xong.</p>
+                </div>
+                <Button onClick={payWithMomo} disabled={momoBusy} className="h-12 rounded-xl bg-[#a50064] px-5 text-white hover:bg-[#8a0054]">
+                  {momoBusy && <Loader2 className="animate-spin" />}Thanh toán MoMo
+                </Button>
+              </div>
+            </Panel>
+          )}
           {awaitingQr && (
             <Panel title="Thanh toán chuyển khoản">
               <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
                 {qr ? <img src={qr} alt={`Mã QR thanh toán ${money(order.total)}`} className="w-60 rounded-xl border border-[#f1e7e2]" />
-                  : <p className="rounded-xl bg-[#fff7df] p-4 text-sm text-[#8a6100]">Chưa cấu hình tài khoản nhận tiền (NEXT_PUBLIC_VIETQR_' trong .env.local).</p>}
+                  : <p className="rounded-xl bg-[#fff7df] p-4 text-sm text-[#8a6100]">Chưa cấu hình tài khoản nhận tiền (NEXT_PUBLIC_VIETQR_* trong .env.local).</p>}
                 <div className="w-full text-sm">
                   <p className="text-[#746b67]">Mở app ngân hàng, quét mã QR. Số tiền và nội dung đã được điền sẵn.</p>
                   <dl className="mt-4 flex flex-col gap-3">
@@ -105,6 +152,8 @@ function OrderDetail() {
               </div>
             </Panel>
           )}
+
+          <OrderReviewPanel order={order} />
 
           <OrderTrackingMap order={order} />
 
@@ -139,7 +188,7 @@ function OrderDetail() {
         </div>
 
         <div className="flex flex-col gap-6">
-          <Panel title={order.restaurant_name}>
+          <Panel title="Món đã đặt">
             <div className="flex flex-col gap-4">
               {(order.order_items ?? []).map(i => (
                 <div key={i.id} className="flex items-center gap-3">
@@ -151,18 +200,31 @@ function OrderDetail() {
               <div className="border-t border-[#f1e7e2] pt-4 text-sm">
                 <div className="flex justify-between text-[#746b67]"><span>Tạm tính</span><span>{money(order.subtotal)}</span></div>
                 <div className="mt-3 flex justify-between text-[#746b67]"><span>Phí giao hàng</span>{order.shipping_fee ? <span>{money(order.shipping_fee)}</span> : <span className="text-[#72a77f]">Miễn phí</span>}</div>
+                {order.discount > 0 && <div className="mt-3 flex justify-between text-[#2f7d4f]"><span>Giảm giá{order.voucher_code && ` (${order.voucher_code})`}</span><span>-{money(order.discount)}</span></div>}
                 <div className="mt-4 flex justify-between text-lg font-extrabold"><span>Tổng cộng</span><span className="text-[#ff5b35]">{money(order.total)}</span></div>
                 <div className="mt-3 flex justify-between text-[#746b67]">
-                  <span>{order.payment_method === 'qr' ? 'Chuyển khoản QR' : 'Tiền mặt khi nhận hàng'}</span>
-                  {order.payment_status === 'paid' ? <b className="text-[#3eaa68]">Đã thanh toán</b> : <b className="text-[#bd8300]">Chưa thanh toán</b>}
+                  <span>{PAYMENT_LABEL[order.payment_method]}</span>
+                  {order.payment_status === 'paid' ? <b className="text-[#3eaa68]">Đã thanh toán</b>
+                    : order.payment_method === 'cod' ? <b className="text-[#746b67]">Trả khi nhận hàng</b>
+                    : <b className="text-[#bd8300]">Chưa thanh toán</b>}
                 </div>
               </div>
             </div>
           </Panel>
 
           <div className="flex flex-col gap-3">
-            {order.status === 'pending' && order.payment_status === 'unpaid' && (
-              <Button variant="outline" disabled={busy} onClick={cancel} className="h-12 rounded-xl text-red-500">Hủy đơn hàng</Button>
+            {/* cancellable until the kitchen starts cooking (same rule as fg_cancel_order) */}
+            {(order.status === 'pending' || order.status === 'confirmed') && (
+              <div>
+                <Button variant="outline" disabled={busy} onClick={cancel} className="h-12 w-full rounded-xl text-red-500">Hủy đơn hàng</Button>
+                <p className="mt-1.5 text-center text-xs text-[#9c918c]">Chỉ hủy được khi quán chưa bắt đầu chuẩn bị món</p>
+              </div>
+            )}
+            {cancelled && order.payment_status === 'paid' && (
+              <p className="rounded-xl bg-[#fff7df] px-4 py-3 text-sm text-[#8a6100]">Đơn đã thanh toán trước, quán sẽ hoàn tiền cho bạn.</p>
+            )}
+            {cancelled && order.payment_status === 'refunded' && (
+              <p className="rounded-xl bg-[#e4f8eb] px-4 py-3 text-sm text-[#2f7d4f]">Quán đã hoàn tiền cho đơn này.</p>
             )}
             {(order.status === 'delivered' || cancelled) && (
               <Button onClick={reorder} className="h-12 rounded-xl bg-[#ff5b35] hover:bg-[#e94c29]"><RotateCcw />Đặt lại đơn này</Button>

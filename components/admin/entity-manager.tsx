@@ -9,16 +9,19 @@ import { errorMessage, supabase } from '@/lib/supabase'
 export type FieldDef = {
   key: string
   label: string
-  type: 'text' | 'number' | 'textarea' | 'image' | 'select' | 'checkbox'
+  /** 'hidden': not shown in the form; new rows get `default` */
+  type: 'text' | 'number' | 'textarea' | 'image' | 'select' | 'checkbox' | 'date' | 'time' | 'hidden'
   required?: boolean
+  hint?: string
   options?: { value: number | string; label: string }[]
   wide?: boolean
+  default?: unknown
 }
 
 type Row = Record<string, unknown> & { id: number }
 
 /** Generic list + create/edit/delete for a simple Supabase table (admin RLS required). */
-export function EntityManager({ table, title, fields, columns, select = '*', orderBy = 'id', searchKey = 'name' }: {
+export function EntityManager({ table, title, fields, columns, select = '*', orderBy = 'id', searchKey = 'name', allowCreate = true, allowDelete = true }: {
   table: string
   title: string
   fields: FieldDef[]
@@ -26,6 +29,8 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
   select?: string
   orderBy?: string
   searchKey?: string
+  allowCreate?: boolean
+  allowDelete?: boolean
 }) {
   const { toast } = useApp()
   const [rows, setRows] = useState<Row[] | null>(null)
@@ -44,7 +49,7 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
 
   const startCreate = () => {
     const blank: Record<string, unknown> = {}
-    for (const f of fields) blank[f.key] = f.type === 'checkbox' ? true : f.type === 'select' ? f.options?.[0]?.value ?? null : ''
+    for (const f of fields) blank[f.key] = f.default !== undefined ? f.default : f.type === 'checkbox' ? true : f.type === 'select' ? f.options?.[0]?.value ?? null : ''
     setEditing(blank)
   }
 
@@ -82,16 +87,42 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-extrabold">{title}</h2>
-        <div className="flex gap-2">
-          <div className="relative">
+        <div className="flex w-full gap-2 sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#9c918c]" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm..." aria-label="Tìm kiếm" className="h-10 w-44 rounded-xl border border-[#eaded8] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#ff5b35]" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm..." aria-label="Tìm kiếm" className="h-10 w-full sm:w-44 rounded-xl border border-[#eaded8] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#ff5b35]" />
           </div>
-          <Button onClick={startCreate} className="h-10 rounded-xl bg-[#ff5b35] px-4 hover:bg-[#e94c29]"><Plus />Thêm</Button>
+          {allowCreate && <Button onClick={startCreate} className="h-10 rounded-xl bg-[#ff5b35] px-4 hover:bg-[#e94c29]"><Plus />Thêm</Button>}
         </div>
       </div>
 
-      <div className="mt-5 overflow-x-auto rounded-2xl bg-white shadow-sm">
+      {/* phones: one card per row (first column = picture, second = title, the rest as label/value) */}
+      <div className="mt-4 flex flex-col gap-3 sm:hidden">
+        {rows === null && <p className="rounded-2xl bg-white py-10 text-center text-sm text-[#9c918c] shadow-sm">Đang tải...</p>}
+        {shown?.length === 0 && <p className="rounded-2xl bg-white py-10 text-center text-sm text-[#9c918c] shadow-sm">Không có dữ liệu</p>}
+        {shown?.map(r => (
+          <div key={r.id} className="flex gap-3 rounded-2xl bg-white p-3 shadow-sm">
+            <div className="shrink-0">{columns[0]?.render(r)}</div>
+            <div className="min-w-0 flex-1 text-sm">
+              <div className="truncate">{columns[1]?.render(r)}</div>
+              <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-xs">
+                {columns.slice(2).map(c => (
+                  <div key={c.label} className="contents">
+                    <dt className="text-[#9c918c]">{c.label}</dt>
+                    <dd className="truncate text-[#241c19]">{c.render(r)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+            <div className="flex shrink-0 flex-col gap-1">
+              <button aria-label="Sửa" onClick={() => setEditing({ ...r })} className="grid size-9 place-items-center rounded-lg bg-[#f8f3f0] text-[#746b67]"><Pencil className="size-4" /></button>
+              {allowDelete && <button aria-label="Xóa" onClick={() => remove(r)} className="grid size-9 place-items-center rounded-lg text-[#746b67] hover:bg-red-50 hover:text-red-500"><Trash2 className="size-4" /></button>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 hidden overflow-x-auto rounded-2xl bg-white shadow-sm sm:block">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-[#f1e7e2] text-xs uppercase text-[#9c918c]">
             <tr>{columns.map(c => <th key={c.label} className="px-4 py-3 font-semibold">{c.label}</th>)}<th className="w-24" /></tr>
@@ -104,7 +135,7 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
                 {columns.map(c => <td key={c.label} className="px-4 py-3 align-middle">{c.render(r)}</td>)}
                 <td className="px-2 py-3 text-right">
                   <button aria-label="Sửa" onClick={() => setEditing({ ...r })} className="inline-grid size-9 place-items-center rounded-lg text-[#746b67] hover:bg-[#f8f3f0]"><Pencil className="size-4" /></button>
-                  <button aria-label="Xóa" onClick={() => remove(r)} className="inline-grid size-9 place-items-center rounded-lg text-[#746b67] hover:bg-red-50 hover:text-red-500"><Trash2 className="size-4" /></button>
+                  {allowDelete && <button aria-label="Xóa" onClick={() => remove(r)} className="inline-grid size-9 place-items-center rounded-lg text-[#746b67] hover:bg-red-50 hover:text-red-500"><Trash2 className="size-4" /></button>}
                 </td>
               </tr>
             ))}
@@ -115,18 +146,19 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
       {editing && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={() => setEditing(null)}>
           <form onSubmit={save} onClick={e => e.stopPropagation()} className="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[#f1e7e2] p-5">
+            {/* full-screen sheet on phones: keep header/footer clear of the status bar and gesture bar */}
+            <div className="flex items-center justify-between border-b border-[#f1e7e2] px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
               <h3 className="text-lg font-extrabold">{editing.id ? 'Chỉnh sửa' : 'Thêm mới'}</h3>
               <button type="button" aria-label="Đóng" onClick={() => setEditing(null)} className="grid size-10 place-items-center rounded-full bg-[#f8f3f0]"><X /></button>
             </div>
             <div className="grid flex-1 content-start gap-4 overflow-y-auto p-5 sm:grid-cols-2">
-              {fields.map(f => (
+              {fields.filter(f => f.type !== 'hidden').map(f => (
                 <div key={f.key} className={f.wide || f.type === 'textarea' || f.type === 'image' ? 'sm:col-span-2' : ''}>
                   <FieldInput def={f} value={editing[f.key]} onChange={v => setEditing({ ...editing, [f.key]: v })} />
                 </div>
               ))}
             </div>
-            <div className="flex gap-3 border-t border-[#f1e7e2] p-5">
+            <div className="flex gap-3 border-t border-[#f1e7e2] px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               <Button type="submit" disabled={busy} className="h-11 flex-1 rounded-xl bg-[#ff5b35] hover:bg-[#e94c29]">{busy && <Loader2 className="animate-spin" />}Lưu</Button>
               <Button type="button" variant="outline" onClick={() => setEditing(null)} className="h-11 rounded-xl px-6">Hủy</Button>
             </div>
@@ -160,9 +192,14 @@ function FieldInput({ def, value, onChange }: { def: FieldDef; value: unknown; o
         </select>
       ) : def.type === 'image' ? (
         <ImageInput value={str} onChange={onChange} />
+      ) : def.type === 'date' ? (
+        <input type="date" value={str.slice(0, 10)} onChange={e => onChange(e.target.value)} required={def.required} className={inputCls} />
+      ) : def.type === 'time' ? (
+        <input type="time" value={str.slice(0, 5)} onChange={e => onChange(e.target.value)} required={def.required} className={inputCls} />
       ) : (
         <input type={def.type === 'number' ? 'number' : 'text'} step="any" value={str} onChange={e => onChange(e.target.value)} required={def.required} className={inputCls} />
       )}
+      {def.hint && <span className="mt-1 block text-xs font-normal text-[#9c918c]">{def.hint}</span>}
     </label>
   )
 }

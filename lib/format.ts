@@ -8,7 +8,7 @@ export const shippingFee = (subtotal: number) => (subtotal >= FREE_SHIP_FROM ? 0
 
 export const ORDER_STEPS: { status: OrderStatus; label: string }[] = [
   { status: 'pending', label: 'Đơn hàng đã đặt' },
-  { status: 'confirmed', label: 'Nhà hàng xác nhận' },
+  { status: 'confirmed', label: 'Quán đã xác nhận' },
   { status: 'preparing', label: 'Đang chuẩn bị món' },
   { status: 'picking_up', label: 'Tài xế đang lấy hàng' },
   { status: 'delivering', label: 'Đang giao hàng' },
@@ -34,6 +34,8 @@ export const STATUS_STYLE: Record<OrderStatus, string> = {
   delivered: 'bg-[#e4f8eb] text-[#3eaa68]',
   cancelled: 'bg-[#f4f0ee] text-[#9c918c]',
 }
+
+export const PAYMENT_LABEL = { cod: 'Tiền mặt khi nhận hàng', qr: 'Chuyển khoản QR', momo: 'Ví MoMo' } as const
 
 export const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })

@@ -58,9 +58,9 @@ export function OrderTrackingMap({ order }: { order: Order }) {
 
   const headline =
     order.status === 'delivering' ? (progress >= 1 ? 'Tài xế sắp đến nơi' : `Tài xế sẽ đến trong khoảng ${remainingMin} phút`)
-    : order.status === 'picking_up' ? 'Tài xế đang lấy món tại nhà hàng'
+    : order.status === 'picking_up' ? 'Tài xế đang lấy món tại quán'
     : order.status === 'delivered' ? 'Đơn hàng đã được giao'
-    : 'Nhà hàng đang chuẩn bị đơn của bạn'
+    : 'Quán đang chuẩn bị đơn của bạn'
 
   const directions = to ? `https://www.google.com/maps/dir/?api=1&destination=${to.lat},${to.lng}${from ? `&origin=${from.lat},${from.lng}` : ''}&travelmode=two-wheeler` : null
 

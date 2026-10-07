@@ -13,6 +13,7 @@
 1. Trong project, mở **SQL Editor** rồi bấm **New query**.
 2. Dán toàn bộ nội dung file [`supabase/schema.sql`](supabase/schema.sql) và bấm **Run**.
 3. Tạo một query mới, dán nội dung [`supabase/seed.sql`](supabase/seed.sql) và bấm **Run**. File này nạp 9 danh mục, 6 nhà hàng và 16 món ăn mẫu. Chỉ chạy **một lần**.
+4. Lần lượt chạy các file trong [`supabase/migrations/`](supabase/migrations) theo thứ tự số: `002_maps.sql` (bản đồ), `003_momo.sql` (MoMo), `004_tdmu_restaurants.sql` (đặt quán quanh Trường ĐH Thủ Dầu Một), `005_single_store.sql` (chuyển sang mô hình **một quán duy nhất** FoodGo, gộp toàn bộ món).
 
 ## 3. Lấy key và tạo `.env.local`
 
@@ -59,17 +60,36 @@ Mỗi đơn chọn "Chuyển khoản QR" sẽ có mã QR riêng, đã điền s�
 ### Xác nhận đã thanh toán
 Có 2 cách:
 
-- **Thủ công**: admin vào **/admin → Đơn hàng** và bấm **Xác nhận đã thanh toán**.
-- **Tự động (khuyến nghị)** qua [SePay](https://sepay.vn), dịch vụ đọc biến động số dư và gửi webhook:
-  1. Đăng ký SePay và liên kết tài khoản ngân hàng nhận tiền.
-  2. Vào **Webhooks → Thêm webhook**:
-     - URL: `https://<domain-cua-ban>/api/payment/webhook`
-     - Kiểu xác thực: **API Key**, giá trị trùng với `SEPAY_WEBHOOK_KEY` trong `.env.local`
-  3. Khi khách chuyển khoản, SePay gọi webhook. Hệ thống tìm mã đơn trong nội dung chuyển khoản, kiểm tra số tiền, rồi đánh dấu **Đã thanh toán** và tự **xác nhận đơn**. Trang đơn hàng của khách cập nhật ngay, không cần tải lại.
+- **Thủ công**: admin kiểm tra tài khoản ngân hàng rồi bấm **"Đã nhận tiền & xác nhận"** trong **/admin → Đơn hàng**.
+- **Tự động (khuyến nghị)** qua [SePay](https://sepay.vn) – chạy migration [`010_sepay.sql`](supabase/migrations/010_sepay.sql) trước:
+  1. Đăng ký SePay, liên kết tài khoản **MB Bank 0819883208** (ngân hàng phải có trong danh sách SePay hỗ trợ).
+  2. Lấy khóa API: Supabase → SQL Editor → `select value from public.fg_secrets where key = 'sepay_api_key';`
+  3. SePay → **Webhooks → + Thêm webhook**:
+     - Sự kiện: **Có tiền vào**; URL: `https://thiet-ke-web-app-food-go.vercel.app/api/payment/webhook`
+     - Tài khoản: MB 0819883208; Bảo mật: **API Key** = khóa ở bước 2
+  4. Bấm **Gửi thử** trong trang chi tiết webhook: phản hồi phải là `{"success": true, ...}`.
+
+  Khi khách chuyển khoản, hàm `fg_sepay_confirm()` kiểm tra khóa API **ngay trong database**, chống xử lý trùng theo `id` giao dịch (bảng `fg_bank_transactions`), tìm mã đơn `FGxxxxxxxx` trong nội dung, kiểm tra đủ tiền rồi đánh dấu **Đã thanh toán** + **xác nhận đơn**. Trang đơn của khách tự cập nhật. Không cần `SUPABASE_SERVICE_ROLE_KEY`.
 
 > Webhook cần một URL công khai. Khi chạy ở localhost, bạn cần deploy (ví dụ lên Vercel) hoặc dùng tunnel như `ngrok` / `cloudflared` để SePay gọi được tới máy bạn.
 
-## 7. Deploy lên Vercel (tùy chọn)
+## 7. Thanh toán ví MoMo
+
+Chạy thêm [`supabase/migrations/003_momo.sql`](supabase/migrations/003_momo.sql) (sau `002_maps.sql`).
+
+- Mặc định dùng **khóa SANDBOX công khai** của MoMo (`test-payment.momo.vn`), **không trừ tiền thật**. Trang thanh toán sandbox cho thanh toán bằng thẻ ATM thử nghiệm trong [tài liệu MoMo](https://developers.momo.vn/v3/docs/payment/onboarding/test-instructions) hoặc app MoMo bản UAT.
+- Luồng xử lý: đặt hàng → `/api/payment/momo/create` ký yêu cầu (HMAC-SHA256) → khách thanh toán trên trang MoMo → MoMo gọi IPN `/api/payment/momo/ipn` và đưa khách về `/orders/<id>` → hàm `fg_momo_confirm()` **kiểm tra chữ ký ngay trong database** rồi đánh dấu đã thanh toán.
+
+**Chuyển sang nhận tiền thật** (cần tài khoản doanh nghiệp tại https://business.momo.vn):
+1. Vercel → Settings → Environment Variables: thêm `MOMO_PARTNER_CODE`, `MOMO_ACCESS_KEY`, `MOMO_SECRET_KEY` và `MOMO_ENDPOINT=https://payment.momo.vn/v2/gateway/api/create`, rồi deploy lại.
+2. Supabase → SQL Editor:
+   ```sql
+   update public.fg_secrets set value = '<ACCESS_KEY thật>' where key = 'momo_access_key';
+   update public.fg_secrets set value = '<SECRET_KEY thật>' where key = 'momo_secret_key';
+   ```
+   (Hai khóa trong database phải trùng với khóa trên Vercel.)
+
+## 8. Deploy lên Vercel (tùy chọn)
 
 1. Đẩy code lên GitHub rồi import vào https://vercel.com.
 2. Vào **Settings → Environment Variables** và thêm tất cả biến trong `.env.local`.

@@ -11,7 +11,8 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     // shown by the WebView when the site can't be reached (offline)
     errorPath: 'offline.html',
-    allowNavigation: ['thiet-ke-web-app-food-go.vercel.app', '*.supabase.co', 'img.vietqr.io'],
+    // MoMo's payment page stays inside the app so its redirect lands back in the app
+    allowNavigation: ['thiet-ke-web-app-food-go.vercel.app', '*.supabase.co', 'img.vietqr.io', '*.momo.vn'],
   },
   android: {
     backgroundColor: '#fffaf7',

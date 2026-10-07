@@ -3,18 +3,21 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Banknote, Bike, Loader2, LocateFixed, QrCode, ShoppingBag } from 'lucide-react'
+import { Banknote, Bike, Loader2, LocateFixed, QrCode, ShoppingBag, TicketPercent } from 'lucide-react'
 import { useLocation } from '@/components/location-provider'
+import { MomoIcon } from '@/components/momo-icon'
+import { startMomoPayment } from '@/lib/momo'
+import { fetchStore, useStoreHours } from '@/lib/store'
 import { FoodMap } from '@/components/map'
 import { distanceKm, formatKm, hasCoords, reverseGeocode, ROUGH_ACCURACY_M, type LatLng } from '@/lib/geo'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
 import { RequireAuth } from '@/components/require-auth'
-import { EmptyState, Panel } from '@/components/cards'
+import { ClosedNotice, EmptyState, Panel } from '@/components/cards'
 import { Field, TextArea } from '@/components/field'
 import { errorMessage, supabase } from '@/lib/supabase'
 import { money, shippingFee } from '@/lib/format'
-import type { Address, Order } from '@/lib/types'
+import type { Address, Order, Restaurant, VoucherQuote } from '@/lib/types'
 
 export default function CheckoutPage() {
   return <RequireAuth><Checkout /></RequireAuth>
@@ -33,9 +36,15 @@ function Checkout() {
   const [address, setAddress] = useState('')
   const [pin, setPin] = useState<LatLng | null>(null)
   const [resolving, setResolving] = useState(false)
-  const [restaurantPos, setRestaurantPos] = useState<LatLng | null>(null)
+  const [store, setStore] = useState<Restaurant | null>(null)
+  const restaurantPos: LatLng | null = hasCoords(store) ? { lat: store.lat, lng: store.lng } : null
+  const hours = useStoreHours(store)
+  const [voucherInput, setVoucherInput] = useState('')
+  const [voucher, setVoucher] = useState<VoucherQuote | null>(null)
+  const [voucherError, setVoucherError] = useState('')
+  const [voucherBusy, setVoucherBusy] = useState(false)
   const [saveAddress, setSaveAddress] = useState(true)
-  const [payment, setPayment] = useState<'cod' | 'qr'>('qr')
+  const [payment, setPayment] = useState<'cod' | 'qr' | 'momo'>('qr')
   const [note, setNote] = useState('')
   const [agree, setAgree] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -60,12 +69,24 @@ function Checkout() {
     setAddress(place.address)
   }, [place, userPicked])
 
-  const restaurantId = cart[0]?.restaurant_id
+  // fresh: the admin may have just opened/closed the shop
+  useEffect(() => { fetchStore(true).then(setStore) }, [])
+
+  const applyVoucher = async (code: string) => {
+    if (!code.trim()) return
+    setVoucherBusy(true); setVoucherError('')
+    const { data, error } = await supabase.rpc('fg_check_voucher', { p_code: code, p_subtotal: cartSubtotal })
+    setVoucherBusy(false)
+    if (error) { setVoucher(null); setVoucherError(errorMessage(error)); return }
+    setVoucher(data as VoucherQuote)
+    setVoucherInput((data as VoucherQuote).code)
+  }
+
+  // the discount depends on the cart: re-check the applied code whenever the subtotal changes
   useEffect(() => {
-    if (!restaurantId) return
-    supabase.from('fg_restaurants').select('lat, lng').eq('id', restaurantId).maybeSingle()
-      .then(({ data }) => setRestaurantPos(hasCoords(data) ? data : null))
-  }, [restaurantId])
+    if (voucher) applyVoucher(voucher.code)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartSubtotal])
 
   const movePin = async (p: LatLng) => {
     setPin(p); setResolving(true)
@@ -93,6 +114,8 @@ function Checkout() {
   }
 
   const fee = shippingFee(cartSubtotal)
+  const discount = voucher?.discount ?? 0
+  const closed = hours !== null && !hours.open
   const chosen = addresses?.find(a => a.id === selected)
   const deliveryPos = chosen ? (hasCoords(chosen) ? { lat: chosen.lat, lng: chosen.lng } : null) : pin
   const tripKm = restaurantPos && deliveryPos ? distanceKm(restaurantPos, deliveryPos) : null
@@ -102,7 +125,7 @@ function Checkout() {
   const placeOrder = async () => {
     setError('')
     const info = chosen ? { recipient: chosen.recipient, phone: chosen.phone, address: chosen.address } : { recipient, phone, address }
-    if (tripKm !== null && tripKm > 30) return setError(`Vị trí giao hàng cách nhà hàng ${formatKm(tripKm)}, vượt quá phạm vi giao hàng (30 km)`)
+    if (tripKm !== null && tripKm > 30) return setError(`Vị trí giao hàng cách quán ${formatKm(tripKm)}, vượt quá phạm vi giao hàng (30 km)`)
     if (!info.recipient.trim() || !info.address.trim()) return setError('Vui lòng nhập đầy đủ người nhận và địa chỉ')
     if (!/^(0|\+84)\d{9,10}$/.test(info.phone.replace(/[\s.]/g, ''))) return setError('Số điện thoại không hợp lệ')
     if (!agree) return setError('Bạn cần đồng ý với điều khoản đặt hàng')
@@ -121,11 +144,22 @@ function Checkout() {
         p_note: note,
         p_lat: deliveryPos?.lat ?? null,
         p_lng: deliveryPos?.lng ?? null,
+        p_voucher_code: voucher?.code ?? null,
       })
       if (error) throw error
       const order = data as Order
       clearCart()
-      toast('Đặt hàng thành công')
+      if (payment === 'momo') {
+        try {
+          await startMomoPayment(order.id)
+          return // leaving for MoMo's payment page
+        } catch (e) {
+          // the order exists; the customer can retry MoMo from the order page
+          toast(errorMessage(e), 'error')
+        }
+      } else {
+        toast('Đặt hàng thành công')
+      }
       router.replace(`/orders/${order.id}?new=1`)
     } catch (e) {
       setError(errorMessage(e))
@@ -135,7 +169,7 @@ function Checkout() {
 
   return (
     <main className="mx-auto max-w-[1200px] px-5 pb-24 pt-8 lg:px-10">
-      <Link href={`/restaurants/${cart[0].restaurant_id}`} className="-my-3 inline-block py-3 text-sm font-bold text-[#ff5b35]">← Tiếp tục chọn món</Link>
+      <Link href="/menu" className="-my-3 inline-block py-3 text-sm font-bold text-[#ff5b35]">← Tiếp tục chọn món</Link>
       <h1 className="mt-5 text-3xl font-extrabold">Thanh toán</h1>
       <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="flex flex-col gap-5">
@@ -161,7 +195,7 @@ function Checkout() {
                       className="h-64"
                       picker={pin ?? (place ? { lat: place.lat, lng: place.lng } : null)}
                       onPick={p => { setUserPicked(true); movePin(p) }}
-                      markers={restaurantPos ? [{ id: 'r', kind: 'restaurant', pos: [restaurantPos.lat, restaurantPos.lng], label: cart[0].restaurant_name }] : []}
+                      markers={restaurantPos ? [{ id: 'r', kind: 'restaurant', pos: [restaurantPos.lat, restaurantPos.lng], label: 'Quán FoodGo' }] : []}
                       fitPoints={pin ? [[pin.lat, pin.lng]] : restaurantPos ? [[restaurantPos.lat, restaurantPos.lng]] : undefined}
                     />
                     <button type="button" onClick={useCurrentLocation} className="absolute right-3 top-3 z-[400] flex h-10 items-center gap-2 rounded-xl bg-white px-3 text-sm font-bold text-[#ff5b35] shadow-md">
@@ -200,28 +234,28 @@ function Checkout() {
               ))}
               {tripKm !== null && (
                 <p className="flex items-center gap-2 rounded-xl bg-[#f8f3f0] px-4 py-3 text-sm text-[#746b67]">
-                  <Bike className="size-4 text-[#ff5b35]" />Cách nhà hàng khoảng <b className="text-[#241c19]">{formatKm(tripKm * 1.3)}</b> đường đi • dự kiến {Math.max(10, Math.round(tripKm * 1.3 * 3 + 12))} phút
+                  <Bike className="size-4 text-[#ff5b35]" />Cách quán khoảng <b className="text-[#241c19]">{formatKm(tripKm * 1.3)}</b> đường đi • dự kiến {Math.max(10, Math.round(tripKm * 1.3 * 3 + 12))} phút
                 </p>
               )}
             </div>
           </Panel>
 
           <Panel title="Phương thức thanh toán">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <PayOption active={payment === 'momo'} onClick={() => setPayment('momo')} icon={<MomoIcon />} title="Ví MoMo" desc="Thanh toán qua ví MoMo, xác nhận tức thì" />
               <PayOption active={payment === 'qr'} onClick={() => setPayment('qr')} icon={<QrCode />} title="Chuyển khoản QR" desc="Quét mã VietQR bằng app ngân hàng, xác nhận tự động" />
               <PayOption active={payment === 'cod'} onClick={() => setPayment('cod')} icon={<Banknote />} title="Thanh toán khi nhận hàng" desc="Trả tiền mặt cho tài xế" />
             </div>
           </Panel>
 
-          <Panel title="Ghi chú cho nhà hàng">
-            <TextArea label="" aria-label="Ghi chú cho nhà hàng" value={note} onChange={setNote} placeholder="Ví dụ: ít cay, không hành..." maxLength={300} />
+          <Panel title="Ghi chú cho quán">
+            <TextArea label="" aria-label="Ghi chú cho quán" value={note} onChange={setNote} placeholder="Ví dụ: ít cay, không hành..." maxLength={300} />
           </Panel>
         </section>
 
         <div className="lg:sticky lg:top-24 lg:self-start">
           <Panel title="Đơn hàng của bạn">
             <div className="flex flex-col gap-4">
-              <p className="text-sm font-semibold text-[#746b67]">{cart[0].restaurant_name}</p>
               {cart.map(x => (
                 <div key={x.food_id} className="flex items-center gap-3">
                   {x.image && <img src={x.image} alt="" className="size-14 rounded-lg object-cover" />}
@@ -232,14 +266,38 @@ function Checkout() {
               <div className="border-t border-[#f1e7e2] pt-4 text-sm">
                 <div className="flex justify-between text-[#746b67]"><span>Tạm tính</span><span>{money(cartSubtotal)}</span></div>
                 <div className="mt-3 flex justify-between text-[#746b67]"><span>Phí giao hàng</span>{fee ? <span>{money(fee)}</span> : <span className="text-[#72a77f]">Miễn phí</span>}</div>
-                <div className="mt-4 flex justify-between text-lg font-extrabold"><span>Tổng cộng</span><span className="text-[#ff5b35]">{money(cartSubtotal + fee)}</span></div>
+                {discount > 0 && <div className="mt-3 flex justify-between text-[#2f7d4f]"><span>Giảm giá ({voucher?.code})</span><span>-{money(discount)}</span></div>}
+                <div className="mt-4 flex justify-between text-lg font-extrabold"><span>Tổng cộng</span><span className="text-[#ff5b35]">{money(cartSubtotal + fee - discount)}</span></div>
+              </div>
+              <div className="border-t border-[#f1e7e2] pt-4">
+                {voucher ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-dashed border-[#72a77f] bg-[#f0faf3] px-3 py-2.5">
+                    <TicketPercent className="size-5 shrink-0 text-[#2f7d4f]" />
+                    <div className="min-w-0 flex-1 text-sm">
+                      <b className="text-[#2f7d4f]">{voucher.code}</b>
+                      <p className="truncate text-xs text-[#746b67]">{voucher.description || `Giảm ${money(voucher.discount)}`}</p>
+                    </div>
+                    <button type="button" onClick={() => { setVoucher(null); setVoucherInput('') }} className="shrink-0 py-1 text-xs font-bold text-[#746b67] hover:text-red-500">Bỏ mã</button>
+                  </div>
+                ) : (
+                  <form onSubmit={e => { e.preventDefault(); applyVoucher(voucherInput) }} className="flex gap-2">
+                    <input value={voucherInput} onChange={e => { setVoucherInput(e.target.value.toUpperCase()); setVoucherError('') }}
+                      placeholder="Nhập mã giảm giá" aria-label="Mã giảm giá" maxLength={30}
+                      className="h-11 min-w-0 flex-1 rounded-xl border border-[#eaded8] px-3 text-sm uppercase outline-none placeholder:normal-case focus:border-[#ff5b35]" />
+                    <Button type="submit" variant="outline" disabled={voucherBusy || !voucherInput.trim()} className="h-11 rounded-xl px-4 font-bold text-[#ff5b35]">
+                      {voucherBusy && <Loader2 className="animate-spin" />}Áp dụng
+                    </Button>
+                  </form>
+                )}
+                {voucherError && <p className="mt-2 text-xs text-red-600">{voucherError}</p>}
               </div>
               <label className="flex cursor-pointer items-center gap-3 py-2 text-sm text-[#746b67]">
                 <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} className="size-5 shrink-0 accent-[#ff5b35]" /> Tôi đồng ý với điều khoản đặt hàng
               </label>
               {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
-              <Button disabled={busy} onClick={placeOrder} className="h-12 rounded-xl bg-[#ff5b35] text-base hover:bg-[#e94c29]">
-                {busy && <Loader2 className="animate-spin" />}{payment === 'qr' ? 'Đặt hàng & lấy mã QR' : 'Đặt hàng'}
+              {closed && hours && <ClosedNotice hours={hours} />}
+              <Button disabled={busy || closed} onClick={placeOrder} className="h-12 rounded-xl bg-[#ff5b35] text-base hover:bg-[#e94c29]">
+                {busy && <Loader2 className="animate-spin" />}{payment === 'qr' ? 'Đặt hàng & lấy mã QR' : payment === 'momo' ? 'Đặt hàng & thanh toán MoMo' : 'Đặt hàng'}
               </Button>
             </div>
           </Panel>
