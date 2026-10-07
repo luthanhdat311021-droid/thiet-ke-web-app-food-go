@@ -9,6 +9,7 @@ import { Field } from '@/components/field'
 import { Spinner } from '@/components/cards'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
+import { validateNewPassword } from '@/lib/password'
 
 /** Landing page for the password-recovery email link (Supabase signs the user in from the URL). */
 export default function ResetPasswordPage() {
@@ -37,9 +38,10 @@ export default function ResetPasswordPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (password.length < 6) return setError('Mật khẩu cần ít nhất 6 ký tự')
     if (password !== confirm) return setError('Mật khẩu nhập lại không khớp')
     setBusy(true)
+    const problem = await validateNewPassword(password)
+    if (problem) { setBusy(false); return setError(problem) }
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(false)
     if (error) return setError(errorMessage(error))

@@ -1,6 +1,8 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
+import { Turnstile, TURNSTILE_SITE_KEY, type TurnstileHandle } from '@/components/turnstile'
+import { validateNewPassword } from '@/lib/password'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -23,7 +25,7 @@ function LoginForm() {
   // only allow same-site relative redirects
   const rawNext = params.get('next') ?? '/'
   const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/'
-  const { user, authLoading, toast } = useApp()
+  const { user, profile, authLoading, toast } = useApp()
   const [mode, setMode] = useState<Mode>(params.get('mode') === 'forgot' ? 'forgot' : params.get('mode') === 'signup' ? 'signup' : 'signin')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -31,8 +33,16 @@ function LoginForm() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+  const [captcha, setCaptcha] = useState<string | null>(null)
+  const turnstile = useRef<TurnstileHandle>(null)
 
-  useEffect(() => { if (!authLoading && user) router.replace(next) }, [authLoading, user, router, next])
+  // /admin is only a sensible destination for admins; anyone else signing in goes home
+  const adminOnly = next.startsWith('/admin')
+  useEffect(() => {
+    if (authLoading || !user) return
+    if (!adminOnly) return router.replace(next)
+    if (profile) router.replace(profile.role === 'admin' ? next : '/')
+  }, [authLoading, user, profile, adminOnly, router, next])
 
   // OAuth failures come back as ?error_description=... or #error_description=...
   useEffect(() => {
@@ -43,22 +53,26 @@ function LoginForm() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isSupabaseConfigured) return setError('Chưa cấu hình Supabase (.env.local).')
+    if (TURNSTILE_SITE_KEY && !captcha) return setError('Vui lòng chờ xác minh chống robot hoàn tất')
     setBusy(true); setError(''); setInfo('')
+    // undefined when Turnstile isn't configured, so Supabase works with captcha protection off
+    const captchaToken = captcha ?? undefined
     try {
       if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        const { error } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken } })
         if (error) throw error
         toast('Đăng nhập thành công')
       } else if (mode === 'signup') {
-        if (password.length < 6) throw new Error('Mật khẩu cần ít nhất 6 ký tự')
+        const problem = await validateNewPassword(password)
+        if (problem) throw new Error(problem)
         const { data, error } = await supabase.auth.signUp({
           email, password,
-          options: { data: { full_name: name.trim() }, emailRedirectTo: `${location.origin}${next}` },
+          options: { data: { full_name: name.trim() }, emailRedirectTo: `${location.origin}${next}`, captchaToken },
         })
         if (error) throw error
         if (!data.session) setInfo('Đã gửi email xác nhận. Vui lòng mở hộp thư và bấm vào liên kết để kích hoạt tài khoản.')
       } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${location.origin}/reset-password` })
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${location.origin}/reset-password`, captchaToken })
         if (error) throw error
         setInfo('Đã gửi email đặt lại mật khẩu. Vui lòng kiểm tra hộp thư.')
       }
@@ -66,6 +80,7 @@ function LoginForm() {
       setError(translate(errorMessage(err)))
     } finally {
       setBusy(false)
+      turnstile.current?.reset() // tokens are single-use
     }
   }
 
@@ -109,6 +124,8 @@ function LoginForm() {
           <Field label="Email" type="email" value={email} onChange={setEmail} required autoComplete="email" />
           {mode !== 'forgot' && <Field label="Mật khẩu" type="password" value={password} onChange={setPassword} required autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />}
           {mode === 'signin' && <button type="button" onClick={() => setMode('forgot')} className="-mt-2 self-end py-2 text-sm font-semibold text-[#ff5b35]">Quên mật khẩu?</button>}
+          {mode === 'signup' && <p className="-mt-2 text-xs text-[#9c918c]">Ít nhất 8 ký tự, gồm cả chữ và số.</p>}
+          <Turnstile ref={turnstile} onToken={setCaptcha} />
           {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
           {info && <p className="rounded-xl bg-[#e4f8eb] px-4 py-3 text-sm text-[#2f7d4f]">{info}</p>}
           <Button type="submit" disabled={busy} className="h-12 rounded-xl bg-[#ff5b35] text-base hover:bg-[#e94c29]">
@@ -134,6 +151,7 @@ function translate(msg: string) {
   if (/already registered/i.test(msg)) return 'Email này đã được đăng ký'
   if (/provider is not enabled/i.test(msg)) return 'Đăng nhập Google chưa được bật trong Supabase (xem SUPABASE_SETUP.md)'
   if (/rate limit|only request this after/i.test(msg)) return 'Bạn thao tác quá nhanh, vui lòng thử lại sau ít phút'
+  if (/captcha/i.test(msg)) return 'Xác minh chống robot thất bại, vui lòng thử lại'
   if (/error sending (confirmation|recovery|magic link)/i.test(msg)) return 'Không gửi được email tới địa chỉ này. Vui lòng kiểm tra lại email hoặc thử email khác.'
   return msg
 }

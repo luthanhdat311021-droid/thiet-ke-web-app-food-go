@@ -13,6 +13,8 @@ type AppContextValue = {
   authLoading: boolean
   refreshProfile: () => Promise<void>
   signOut: () => Promise<void>
+  /** true while a deliberate sign-out is in progress */
+  signingOut: boolean
 
   cart: CartItem[]
   cartCount: number
@@ -151,10 +153,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(async () => { if (user) await loadProfile(user.id) }, [user, loadProfile])
 
+  // a deliberate sign-out goes home; RequireAuth must not bounce to /login?next=<protected page> meanwhile,
+  // or the next account to sign in lands on a page it may not be allowed to see (e.g. /admin)
+  const [signingOut, setSigningOut] = useState(false)
   const signOut = useCallback(async () => {
+    setSigningOut(true)
+    router.replace('/')
     await supabase.auth.signOut()
     toast('Đã đăng xuất')
-    router.push('/')
+    setSigningOut(false)
   }, [router, toast])
 
   // ---------- favorites ----------
@@ -180,12 +187,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [user, unreadCount])
 
   const value = useMemo<AppContextValue>(() => ({
-    user, profile, authLoading, refreshProfile, signOut,
+    user, profile, authLoading, refreshProfile, signOut, signingOut,
     cart, cartCount, cartSubtotal, addToCart, setQty, replaceCart, clearCart, cartOpen, setCartOpen,
     favoriteIds, toggleFavorite,
     notifications, unreadCount, markAllRead,
     toast,
-  }), [user, profile, authLoading, refreshProfile, signOut, cart, cartCount, cartSubtotal, addToCart, setQty, replaceCart, clearCart, cartOpen,
+  }), [user, profile, authLoading, refreshProfile, signOut, signingOut, cart, cartCount, cartSubtotal, addToCart, setQty, replaceCart, clearCart, cartOpen,
     favoriteIds, toggleFavorite, notifications, unreadCount, markAllRead, toast])
 
   return (

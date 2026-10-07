@@ -80,7 +80,9 @@ function Checkout() {
     setVoucherBusy(true); setVoucherError('')
     const { data, error } = await supabase.rpc('fg_check_voucher', { p_code: code, p_subtotal: cartSubtotal, p_restaurant_id: cartRestaurantId ?? null })
     setVoucherBusy(false)
-    if (error) { setVoucher(null); setVoucherError(errorMessage(error)); return }
+    // an invalid code comes back as { error } (so the DB can count failed guesses), a throttled user as an error
+    const failure = error ? errorMessage(error) : (data as { error?: string } | null)?.error
+    if (failure) { setVoucher(null); setVoucherError(failure); return }
     setVoucher(data as VoucherQuote)
     setVoucherInput((data as VoucherQuote).code)
   }

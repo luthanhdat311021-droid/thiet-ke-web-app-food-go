@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { rateLimit } from '@/lib/rate-limit'
 
 // MoMo Payment Gateway v2 – https://developers.momo.vn/v3/docs/payment/api/wallet/onetime
 // Defaults are MoMo's public SANDBOX credentials (no real money); set MOMO_* env vars for production.
@@ -13,9 +14,11 @@ const clean = (v?: string) => v?.replace(/^﻿/, '').trim()
 
 /** Starts a MoMo payment for one of the signed-in customer's unpaid orders; returns MoMo's pay URL. */
 export async function POST(req: Request) {
+  const limited = rateLimit(req, 'momo-create', 10)
+  if (limited) return limited
   const token = req.headers.get('authorization')?.replace(/^Bearer /, '')
   const { orderId } = await req.json().catch(() => ({})) as { orderId?: number }
-  if (!token || !orderId) return NextResponse.json({ error: 'Thiếu thông tin đơn hàng' }, { status: 400 })
+  if (!token || !Number.isSafeInteger(orderId) || orderId! <= 0) return NextResponse.json({ error: 'Thiếu thông tin đơn hàng' }, { status: 400 })
 
   // query as the customer, so RLS guarantees they can only pay their own order
   const supabase = createClient(clean(process.env.NEXT_PUBLIC_SUPABASE_URL)!, clean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!, {

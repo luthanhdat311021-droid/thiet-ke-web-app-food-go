@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { rateLimit } from '@/lib/rate-limit'
 
 // Nominatim (OpenStreetMap) requires an identifying User-Agent; calls go through this
 // route so the browser/app never hits it directly and results are cached at the edge.
@@ -17,6 +18,8 @@ function formatAddress(a: NominatimAddress, fallback: string) {
 }
 
 export async function GET(req: Request) {
+  const limited = rateLimit(req, 'geo-reverse', 40)
+  if (limited) return limited
   const { searchParams } = new URL(req.url)
   const lat = Number(searchParams.get('lat'))
   const lng = Number(searchParams.get('lng'))

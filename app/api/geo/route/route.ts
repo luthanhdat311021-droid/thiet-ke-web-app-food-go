@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { rateLimit } from '@/lib/rate-limit'
 
 const valid = (lat: number, lng: number) => Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
 
@@ -7,6 +8,8 @@ const valid = (lat: number, lng: number) => Number.isFinite(lat) && Number.isFin
  * Returns [lat, lng][] plus distance (m) and duration (s); falls back to a straight line.
  */
 export async function GET(req: Request) {
+  const limited = rateLimit(req, 'geo-route', 40)
+  if (limited) return limited
   const p = new URL(req.url).searchParams
   const from = [Number(p.get('fromLat')), Number(p.get('fromLng'))] as const
   const to = [Number(p.get('toLat')), Number(p.get('toLng'))] as const

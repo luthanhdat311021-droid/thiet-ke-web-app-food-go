@@ -3,8 +3,10 @@
 import Link from 'next/link'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, BarChart3, Grid2x2, LayoutDashboard, LogOut, Package, Star, Store, TicketPercent, Trash2, Users, UtensilsCrossed, Wallet } from 'lucide-react'
+import { ArrowLeft, BarChart3, Grid2x2, LayoutDashboard, LogOut, Package, ScrollText, ShieldAlert, Star, Store, TicketPercent, Trash2, Users, UtensilsCrossed, Wallet } from 'lucide-react'
 import { StatsAdmin } from '@/components/admin/stats'
+import { AuditLog } from '@/components/admin/audit-log'
+import { useAal } from '@/components/mfa'
 import { OrdersManager } from '@/components/admin/orders-manager'
 import { SubscriptionsAdmin, GrantRestaurantButton, SubscriptionSummary } from '@/components/admin/subscriptions'
 import { FoodsManager, VouchersManager, restaurantFields, restaurantStatus, thumb, yesNo } from '@/components/admin/catalog'
@@ -32,6 +34,7 @@ const TABS = [
   { id: 'reviews', label: 'Đánh giá', icon: Star },
   { id: 'categories', label: 'Danh mục', icon: Grid2x2 },
   { id: 'users', label: 'Người dùng', icon: Users },
+  { id: 'audit', label: 'Nhật ký bảo mật', icon: ScrollText },
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
@@ -67,6 +70,7 @@ function Admin() {
         <button onClick={signOut} className="flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-red-500 hover:bg-red-50"><LogOut className="size-4" />Đăng xuất</button>
       </aside>
       <main className="min-w-0 flex-1 p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-5 lg:p-10">
+        <MfaReminder />
         {tab === 'overview' && <Overview />}
         {tab === 'stats' && <StatsAdmin title="Thống kê đơn hàng" />}
         {tab === 'subscriptions' && <SubscriptionsAdmin />}
@@ -77,8 +81,21 @@ function Admin() {
         {tab === 'categories' && <CategoriesAdmin />}
         {tab === 'users' && <UsersAdmin />}
         {tab === 'reviews' && <ReviewsAdmin />}
+        {tab === 'audit' && <AuditLog />}
       </main>
     </div>
+  )
+}
+
+/** Admins without 2FA get a standing reminder: a leaked password alone would hand over the whole system. */
+function MfaReminder() {
+  const { aal } = useAal()
+  if (aal?.next !== 'aal1') return null
+  return (
+    <Link href="/account?tab=security" className="mb-4 flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+      <ShieldAlert className="size-5 shrink-0" />
+      <span>Tài khoản quản trị chưa bật <b>xác thực 2 lớp</b>. Lộ mật khẩu là mất quyền toàn hệ thống — <b className="underline">bật ngay</b>.</span>
+    </Link>
   )
 }
 

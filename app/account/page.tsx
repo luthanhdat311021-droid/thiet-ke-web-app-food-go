@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Heart, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, Package, Pencil, Plus, Store, Trash2, User } from 'lucide-react'
+import { Heart, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, Package, Pencil, Plus, ShieldCheck, Store, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RequireAuth } from '@/components/require-auth'
 import { EmptyState, FoodCard, FOOD_SELECT, Panel, Spinner } from '@/components/cards'
 import { Field } from '@/components/field'
 import { useApp } from '@/components/app-provider'
+import { validateNewPassword } from '@/lib/password'
+import { MfaSettings } from '@/components/mfa'
 import { errorMessage, supabase } from '@/lib/supabase'
 import type { Address, Food } from '@/lib/types'
 
@@ -17,6 +19,7 @@ const TABS = [
   { id: 'addresses', label: 'Địa chỉ', icon: MapPin },
   { id: 'favorites', label: 'Món yêu thích', icon: Heart },
   { id: 'password', label: 'Đổi mật khẩu', icon: KeyRound },
+  { id: 'security', label: 'Bảo mật (2FA)', icon: ShieldCheck },
 ] as const
 type Tab = (typeof TABS)[number]['id']
 
@@ -51,6 +54,7 @@ function Account() {
         {tab === 'addresses' && <AddressesTab />}
         {tab === 'favorites' && <FavoritesTab />}
         {tab === 'password' && <PasswordTab />}
+        {tab === 'security' && <Panel title="Xác thực 2 lớp (2FA)"><MfaSettings /></Panel>}
       </div>
     </main>
   )
@@ -202,9 +206,10 @@ function PasswordTab() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    if (password.length < 6) return setError('Mật khẩu cần ít nhất 6 ký tự')
     if (password !== confirm) return setError('Mật khẩu nhập lại không khớp')
     setBusy(true)
+    const problem = await validateNewPassword(password)
+    if (problem) { setBusy(false); return setError(problem) }
     const { error } = await supabase.auth.updateUser({ password })
     setBusy(false)
     if (error) return setError(errorMessage(error))

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { rateLimit } from '@/lib/rate-limit'
 
 const UA = 'FoodGo/1.0 (+https://thiet-ke-web-app-food-go.vercel.app)'
 
@@ -37,6 +38,8 @@ function candidates(text: string) {
 
 /** Address text → coordinates (Vietnam only), used when an order/address has no saved coordinates. */
 export async function GET(req: Request) {
+  const limited = rateLimit(req, 'geo-search', 30)
+  if (limited) return limited
   const text = new URL(req.url).searchParams.get('q')?.trim()
   if (!text || text.length < 4 || text.length > 200) return NextResponse.json({ error: 'Địa chỉ không hợp lệ' }, { status: 400 })
   // inner city first (street names repeat across the merged city), then anywhere in Vietnam
