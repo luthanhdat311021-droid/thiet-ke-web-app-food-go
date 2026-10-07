@@ -1,110 +1,68 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Heart, Minus, Plus, Store } from 'lucide-react'
-import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-import type { Category, Food } from '@/lib/types'
-import { money } from '@/lib/format'
-import { useStore } from '@/lib/store'
-import { useApp } from '@/components/app-provider'
-import { EmptyState, Spinner, StoreCard } from '@/components/cards'
-import { FoodDetailSheet, RatingBadge } from '@/components/reviews'
+import { useMemo, useState } from 'react'
+import { Search, Store } from 'lucide-react'
+import { storeHours, useClock, useRestaurants } from '@/lib/store'
+import { useLocation } from '@/components/location-provider'
+import { distanceKm, hasCoords } from '@/lib/geo'
+import { CardSkeleton, EmptyState, RestaurantCard } from '@/components/cards'
 
-export default function MenuPage() {
-  const store = useStore()
-  const [foods, setFoods] = useState<Food[] | null>(null)
-  const [categories, setCategories] = useState<Category[]>([])
-  const { cart, setQty, addToCart, favoriteIds, toggleFavorite, setCartOpen, cartSubtotal, cartCount } = useApp()
-  const [viewing, setViewing] = useState<Food | null>(null)
+const SORTS = [
+  { value: 'near', label: 'Gần tôi nhất' },
+  { value: 'rating', label: 'Đánh giá cao' },
+] as const
 
-  useEffect(() => {
-    if (!isSupabaseConfigured) { setFoods([]); return }
-    supabase.from('fg_foods').select('*').order('is_popular', { ascending: false }).order('sold_count', { ascending: false })
-      .then(({ data }) => setFoods((data ?? []) as Food[]))
-    supabase.from('fg_categories').select('*').order('sort').then(({ data }) => setCategories((data ?? []) as Category[]))
-  }, [])
+/** All restaurants: open ones first, then nearest (or best rated). */
+export default function RestaurantsPage() {
+  const restaurants = useRestaurants()
+  const { place } = useLocation()
+  const [q, setQ] = useState('')
+  const [openOnly, setOpenOnly] = useState(false)
+  const [sort, setSort] = useState<(typeof SORTS)[number]['value']>('near')
+  useClock()
 
-  // "Nổi bật" first, then one section per category in the admin-defined order
-  const groups = useMemo(() => {
-    const list = foods ?? []
-    const out: [string, Food[]][] = []
-    const popular = list.filter(f => f.is_popular)
-    if (popular.length) out.push(['Nổi bật', popular])
-    for (const c of categories) {
-      const items = list.filter(f => f.category_id === c.id)
-      if (items.length) out.push([c.name, items])
-    }
-    const other = list.filter(f => !categories.some(c => c.id === f.category_id))
-    if (other.length) out.push(['Khác', other])
-    return out
-  }, [foods, categories])
-
-  if (store === undefined || foods === null) return <Spinner />
+  const shown = useMemo(() => {
+    if (!restaurants) return undefined
+    const term = q.trim().toLowerCase()
+    const dist = (r: (typeof restaurants)[number]) => place && hasCoords(r) ? distanceKm(place, r) : r.distance_km
+    return restaurants
+      .map(r => ({ r, open: storeHours(r).open, km: dist(r) }))
+      .filter(x => (!openOnly || x.open) && (!term || `${x.r.name} ${x.r.cuisine ?? ''} ${x.r.address ?? ''}`.toLowerCase().includes(term)))
+      .sort((a, b) => Number(b.open) - Number(a.open)
+        || (sort === 'rating' ? b.r.rating - a.r.rating || b.r.review_count - a.r.review_count : a.km - b.km))
+      .map(x => x.r)
+  }, [restaurants, place, q, openOnly, sort])
 
   return (
-    <main className="mx-auto max-w-[1100px] pb-28">
-      {viewing && <FoodDetailSheet food={viewing} onClose={() => setViewing(null)} />}
-      {store && <StoreCard store={store} />}
+    <main className="mx-auto max-w-[1400px] px-5 pb-24 pt-8 lg:px-10">
+      <p className="text-sm font-semibold text-[#ff5b35]">NHÀ HÀNG</p>
+      <h1 className="mt-2 text-3xl font-extrabold">Chọn nhà hàng</h1>
+      <p className="mt-2 text-sm text-[#746b67]">
+        {shown === undefined ? 'Đang tải...' : `${shown.length} nhà hàng${place ? ' • sắp xếp theo khoảng cách tới bạn' : ''}`}
+      </p>
 
-      <div className="px-5 lg:px-10">
-        {groups.length > 1 && (
-          <nav className="sticky top-[133px] z-10 -mx-5 mt-4 flex gap-2 overflow-x-auto bg-[#fffaf7]/95 px-5 py-3 backdrop-blur [scrollbar-width:none] sm:top-20 [&::-webkit-scrollbar]:hidden">
-            {groups.map(([name]) => <a key={name} href={`#cat-${name}`} className="whitespace-nowrap rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#746b67] shadow-sm hover:text-[#ff5b35]">{name}</a>)}
-          </nav>
-        )}
-        {foods.length === 0 && <div className="mt-8"><EmptyState icon={<Store />} title="Thực đơn đang được cập nhật" /></div>}
-        {groups.map(([name, items]) => (
-          <section key={name} id={`cat-${name}`} className="mt-8 scroll-mt-48">
-            <h2 className="text-xl font-extrabold">{name}</h2>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              {items.map(f => {
-                const inCart = cart.find(x => x.food_id === f.id)
-                const liked = favoriteIds.includes(f.id)
-                return (
-                  <article key={`${name}-${f.id}`} className={`flex gap-4 rounded-2xl bg-white p-3 shadow-sm ${f.is_available ? '' : 'opacity-60'}`}>
-                    {f.image && (
-                      <button type="button" aria-label={`Xem chi tiết ${f.name}`} onClick={() => setViewing(f)} className="shrink-0">
-                        <img src={f.image} alt={f.name} loading="lazy" className="size-28 rounded-xl object-cover" />
-                      </button>
-                    )}
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <div className="flex items-start justify-between gap-2">
-                        <button type="button" onClick={() => setViewing(f)} className="text-left font-bold hover:text-[#ff5b35]"><h3>{f.name}</h3></button>
-                        <button aria-label={liked ? 'Bỏ yêu thích' : 'Yêu thích'} onClick={() => toggleFavorite(f.id)} className="-m-1 p-1 text-[#ff5b35]"><Heart className={`size-5 ${liked ? 'fill-current' : ''}`} /></button>
-                      </div>
-                      <div className="mt-0.5"><RatingBadge rating={f.rating} count={f.review_count ?? 0} onClick={() => setViewing(f)} /></div>
-                      {f.description && <p className="mt-1 line-clamp-2 text-xs text-[#9c918c]">{f.description}</p>}
-                      <div className="mt-auto flex items-center justify-between pt-3">
-                        <div>
-                          <b className="text-[#ff5b35]">{money(f.price)}</b>
-                          {f.old_price && f.old_price > f.price && <del className="ml-2 text-xs text-[#aaa09b]">{money(f.old_price)}</del>}
-                        </div>
-                        {!f.is_available ? <span className="text-xs font-bold text-[#9c918c]">Tạm hết</span>
-                          : inCart ? (
-                            <div className="flex items-center gap-2">
-                              <button aria-label="Giảm" onClick={() => setQty(f.id, inCart.qty - 1)} className="grid size-8 place-items-center rounded-lg bg-[#f8f3f0]"><Minus className="size-3" /></button>
-                              <span className="w-5 text-center text-sm font-bold">{inCart.qty}</span>
-                              <button aria-label="Tăng" onClick={() => setQty(f.id, inCart.qty + 1)} className="grid size-8 place-items-center rounded-lg bg-[#ff5b35] text-white"><Plus className="size-3" /></button>
-                            </div>
-                          ) : (
-                            <button aria-label={`Thêm ${f.name}`} onClick={() => addToCart(f)} className="grid size-9 place-items-center rounded-xl bg-[#fff0eb] text-[#ff5b35] hover:bg-[#ff5b35] hover:text-white"><Plus /></button>
-                          )}
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
-            </div>
-          </section>
-        ))}
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-0 flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#9c918c]" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm tên nhà hàng, món chính..." aria-label="Tìm nhà hàng"
+            className="h-11 w-full rounded-xl border border-[#eaded8] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#ff5b35]" />
+        </div>
+        <select aria-label="Sắp xếp" value={sort} onChange={e => setSort(e.target.value as typeof sort)} className="h-11 rounded-xl border border-[#eaded8] bg-white px-3 text-sm">
+          {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+        </select>
+        <label className="flex h-11 cursor-pointer items-center gap-2 rounded-xl bg-white px-3 text-sm font-semibold shadow-sm">
+          <input type="checkbox" checked={openOnly} onChange={e => setOpenOnly(e.target.checked)} className="size-4 accent-[#ff5b35]" />Đang mở cửa
+        </label>
       </div>
 
-      {cartCount > 0 && (
-        <div className="fixed bottom-[76px] left-0 right-0 z-20 px-5 sm:bottom-6">
-          <button onClick={() => setCartOpen(true)} className="mx-auto flex h-14 w-full max-w-md items-center justify-between rounded-2xl bg-[#ff5b35] px-5 font-bold text-white shadow-xl hover:bg-[#e94c29]">
-            <span>{cartCount} món • Xem giỏ hàng</span><span>{money(cartSubtotal)}</span>
-          </button>
-        </div>
+      <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {shown === undefined && <CardSkeleton count={4} className="h-60" />}
+        {shown?.map(r => <RestaurantCard key={r.id} r={r} />)}
+      </div>
+      {shown?.length === 0 && (
+        <EmptyState icon={<Store />} title={restaurants?.length ? 'Không có nhà hàng phù hợp' : 'Chưa có nhà hàng nào'}>
+          {restaurants?.length ? 'Thử từ khóa khác hoặc bỏ lọc "Đang mở cửa".' : null}
+        </EmptyState>
       )}
     </main>
   )

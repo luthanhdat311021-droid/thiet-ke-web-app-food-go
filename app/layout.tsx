@@ -8,7 +8,7 @@ import { LocationProvider } from '@/components/location-provider'
 
 export const metadata: Metadata = {
   title: 'FoodGo – Món ngon giao tận cửa',
-  description: 'Đặt món tại quán FoodGo gần ĐH Thủ Dầu Một – cơm, gà rán, pizza, trà sữa giao tận cửa.',
+  description: 'Đặt món từ các nhà hàng quanh bạn – cơm, gà rán, pizza, trà sữa giao tận cửa.',
   icons: {
     icon: [
       {

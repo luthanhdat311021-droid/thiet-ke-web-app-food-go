@@ -73,14 +73,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(CART_KEY, JSON.stringify(cart)) } catch {}
   }, [cart])
 
-  // single shop: every dish can go in the same cart
+  // one order = one restaurant (fg_place_order enforces it): switching restaurants starts a new cart
   const addToCart = useCallback((food: Food, qty = 1) => {
     if (!food.is_available) return toast('Món này tạm hết', 'error')
-    setCart(c => c.some(x => x.food_id === food.id)
-      ? c.map(x => (x.food_id === food.id ? { ...x, qty: Math.min(50, x.qty + qty) } : x))
-      : [...c, { food_id: food.id, name: food.name, price: food.price, image: food.image, restaurant_id: food.restaurant_id, restaurant_name: 'FoodGo', qty }])
+    const other = cart.find(x => x.restaurant_id !== food.restaurant_id)
+    const restaurantName = food.restaurants?.name ?? 'Nhà hàng'
+    if (other && !window.confirm(`Giỏ hàng đang có món của ${other.restaurant_name}. Mỗi đơn chỉ đặt từ một nhà hàng.\n\nXóa giỏ hiện tại để thêm món của ${restaurantName}?`)) return
+    const item: CartItem = { food_id: food.id, name: food.name, price: food.price, image: food.image, restaurant_id: food.restaurant_id, restaurant_name: restaurantName, qty }
+    setCart(c => {
+      const same = c.filter(x => x.restaurant_id === food.restaurant_id)
+      return same.some(x => x.food_id === food.id)
+        ? same.map(x => (x.food_id === food.id ? { ...x, qty: Math.min(50, x.qty + qty) } : x))
+        : [...same, item]
+    })
     toast(`Đã thêm ${food.name} vào giỏ`)
-  }, [toast])
+  }, [cart, toast])
 
   const replaceCart = useCallback((items: CartItem[]) => {
     if (cart.length && !window.confirm('Thay giỏ hàng hiện tại bằng các món trong đơn này?')) return false

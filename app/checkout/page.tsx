@@ -7,7 +7,7 @@ import { Banknote, Bike, Loader2, LocateFixed, QrCode, ShoppingBag, TicketPercen
 import { useLocation } from '@/components/location-provider'
 import { MomoIcon } from '@/components/momo-icon'
 import { startMomoPayment } from '@/lib/momo'
-import { fetchStore, useStoreHours } from '@/lib/store'
+import { fetchRestaurant, useStoreHours } from '@/lib/store'
 import { FoodMap } from '@/components/map'
 import { distanceKm, formatKm, hasCoords, reverseGeocode, ROUGH_ACCURACY_M, type LatLng } from '@/lib/geo'
 import { Button } from '@/components/ui/button'
@@ -69,13 +69,16 @@ function Checkout() {
     setAddress(place.address)
   }, [place, userPicked])
 
-  // fresh: the admin may have just opened/closed the shop
-  useEffect(() => { fetchStore(true).then(setStore) }, [])
+  // the cart's restaurant, fresh: the admin may have just opened/closed it
+  const cartRestaurantId = cart[0]?.restaurant_id
+  useEffect(() => {
+    if (cartRestaurantId) fetchRestaurant(cartRestaurantId).then(setStore)
+  }, [cartRestaurantId])
 
   const applyVoucher = async (code: string) => {
     if (!code.trim()) return
     setVoucherBusy(true); setVoucherError('')
-    const { data, error } = await supabase.rpc('fg_check_voucher', { p_code: code, p_subtotal: cartSubtotal })
+    const { data, error } = await supabase.rpc('fg_check_voucher', { p_code: code, p_subtotal: cartSubtotal, p_restaurant_id: cartRestaurantId ?? null })
     setVoucherBusy(false)
     if (error) { setVoucher(null); setVoucherError(errorMessage(error)); return }
     setVoucher(data as VoucherQuote)
@@ -125,7 +128,7 @@ function Checkout() {
   const placeOrder = async () => {
     setError('')
     const info = chosen ? { recipient: chosen.recipient, phone: chosen.phone, address: chosen.address } : { recipient, phone, address }
-    if (tripKm !== null && tripKm > 30) return setError(`Vị trí giao hàng cách quán ${formatKm(tripKm)}, vượt quá phạm vi giao hàng (30 km)`)
+    if (tripKm !== null && tripKm > 30) return setError(`Vị trí giao hàng cách nhà hàng ${formatKm(tripKm)}, vượt quá phạm vi giao hàng (30 km)`)
     if (!info.recipient.trim() || !info.address.trim()) return setError('Vui lòng nhập đầy đủ người nhận và địa chỉ')
     if (!/^(0|\+84)\d{9,10}$/.test(info.phone.replace(/[\s.]/g, ''))) return setError('Số điện thoại không hợp lệ')
     if (!agree) return setError('Bạn cần đồng ý với điều khoản đặt hàng')
@@ -195,7 +198,7 @@ function Checkout() {
                       className="h-64"
                       picker={pin ?? (place ? { lat: place.lat, lng: place.lng } : null)}
                       onPick={p => { setUserPicked(true); movePin(p) }}
-                      markers={restaurantPos ? [{ id: 'r', kind: 'restaurant', pos: [restaurantPos.lat, restaurantPos.lng], label: 'Quán FoodGo' }] : []}
+                      markers={restaurantPos ? [{ id: 'r', kind: 'restaurant', pos: [restaurantPos.lat, restaurantPos.lng], label: store?.name }] : []}
                       fitPoints={pin ? [[pin.lat, pin.lng]] : restaurantPos ? [[restaurantPos.lat, restaurantPos.lng]] : undefined}
                     />
                     <button type="button" onClick={useCurrentLocation} className="absolute right-3 top-3 z-[400] flex h-10 items-center gap-2 rounded-xl bg-white px-3 text-sm font-bold text-[#ff5b35] shadow-md">
@@ -234,7 +237,7 @@ function Checkout() {
               ))}
               {tripKm !== null && (
                 <p className="flex items-center gap-2 rounded-xl bg-[#f8f3f0] px-4 py-3 text-sm text-[#746b67]">
-                  <Bike className="size-4 text-[#ff5b35]" />Cách quán khoảng <b className="text-[#241c19]">{formatKm(tripKm * 1.3)}</b> đường đi • dự kiến {Math.max(10, Math.round(tripKm * 1.3 * 3 + 12))} phút
+                  <Bike className="size-4 text-[#ff5b35]" />Cách nhà hàng khoảng <b className="text-[#241c19]">{formatKm(tripKm * 1.3)}</b> đường đi • dự kiến {Math.max(10, Math.round(tripKm * 1.3 * 3 + 12))} phút
                 </p>
               )}
             </div>
@@ -254,7 +257,7 @@ function Checkout() {
         </section>
 
         <div className="lg:sticky lg:top-24 lg:self-start">
-          <Panel title="Đơn hàng của bạn">
+          <Panel title={store ? `Đơn từ ${store.name}` : 'Đơn hàng của bạn'}>
             <div className="flex flex-col gap-4">
               {cart.map(x => (
                 <div key={x.food_id} className="flex items-center gap-3">

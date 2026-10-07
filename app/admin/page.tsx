@@ -3,9 +3,13 @@
 import Link from 'next/link'
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, BarChart3, Grid2x2, LayoutDashboard, LogOut, Package, Star, Store, TicketPercent, Trash2, Users, UtensilsCrossed } from 'lucide-react'
+import { ArrowLeft, BarChart3, Grid2x2, LayoutDashboard, LogOut, Package, Star, Store, TicketPercent, Trash2, Users, UtensilsCrossed, Wallet } from 'lucide-react'
 import { StatsAdmin } from '@/components/admin/stats'
-import { fetchStore, storeHours, useStoreHours } from '@/lib/store'
+import { OrdersManager } from '@/components/admin/orders-manager'
+import { SubscriptionsAdmin, GrantRestaurantButton, SubscriptionSummary } from '@/components/admin/subscriptions'
+import { FoodsManager, VouchersManager, restaurantFields, restaurantStatus, thumb, yesNo } from '@/components/admin/catalog'
+import { fetchRestaurants, storeHours, useClock } from '@/lib/store'
+import { subscriptionOf } from '@/lib/shop'
 import { Stars } from '@/components/reviews'
 import { RequireAuth } from '@/components/require-auth'
 import { useIsNativeApp } from '@/lib/native'
@@ -14,16 +18,17 @@ import { Spinner } from '@/components/cards'
 import { EntityManager } from '@/components/admin/entity-manager'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
-import { formatDateTime, money, ORDER_STEPS, STATUS_LABEL, STATUS_STYLE } from '@/lib/format'
-import type { Category, Order, OrderStatus, Profile, Restaurant } from '@/lib/types'
+import { formatDateTime, money } from '@/lib/format'
+import type { Order, Profile, Restaurant } from '@/lib/types'
 
 const TABS = [
   { id: 'overview', label: 'Tổng quan', icon: LayoutDashboard },
-  { id: 'stats', label: 'Thống kê', icon: BarChart3 },
+  { id: 'subscriptions', label: 'Phí duy trì', icon: Wallet },
+  { id: 'stats', label: 'Thống kê đơn', icon: BarChart3 },
   { id: 'orders', label: 'Đơn hàng', icon: Package },
   { id: 'foods', label: 'Món ăn', icon: UtensilsCrossed },
   { id: 'vouchers', label: 'Mã giảm giá', icon: TicketPercent },
-  { id: 'restaurants', label: 'Thông tin quán', icon: Store },
+  { id: 'restaurants', label: 'Nhà hàng', icon: Store },
   { id: 'reviews', label: 'Đánh giá', icon: Star },
   { id: 'categories', label: 'Danh mục', icon: Grid2x2 },
   { id: 'users', label: 'Người dùng', icon: Users },
@@ -63,10 +68,11 @@ function Admin() {
       </aside>
       <main className="min-w-0 flex-1 p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:p-5 lg:p-10">
         {tab === 'overview' && <Overview />}
-        {tab === 'stats' && <StatsAdmin />}
-        {tab === 'vouchers' && <VouchersAdmin />}
-        {tab === 'orders' && <OrdersAdmin />}
-        {tab === 'foods' && <FoodsAdmin />}
+        {tab === 'stats' && <StatsAdmin title="Thống kê đơn hàng" />}
+        {tab === 'subscriptions' && <SubscriptionsAdmin />}
+        {tab === 'vouchers' && <VouchersManager />}
+        {tab === 'orders' && <OrdersManager />}
+        {tab === 'foods' && <FoodsManager />}
         {tab === 'restaurants' && <RestaurantsAdmin />}
         {tab === 'categories' && <CategoriesAdmin />}
         {tab === 'users' && <UsersAdmin />}
@@ -124,19 +130,18 @@ function Overview() {
   const max = Math.max(1, ...stats.days.map(d => d.revenue))
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-extrabold">Tổng quan</h1>
-        <StoreSwitch />
-      </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <Stat label="Doanh thu hôm nay" value={money(stats.todayRevenue)} hint={`${stats.deliveredTodayCount} đơn đã giao`} />
+      <h1 className="text-2xl font-extrabold">Tổng quan</h1>
+      <SubscriptionSummary />
+      <h2 className="mt-6 font-extrabold sm:mt-8">Đơn hàng toàn hệ thống</h2>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <Stat label="Doanh số hôm nay" value={money(stats.todayRevenue)} hint={`${stats.deliveredTodayCount} đơn đã giao`} />
         <Stat label="Đơn đặt hôm nay" value={String(stats.todayOrders)} />
-        <Stat label="Doanh thu 30 ngày" value={money(stats.monthRevenue)} hint="Chỉ tính đơn đã giao" />
+        <Stat label="Doanh số 30 ngày" value={money(stats.monthRevenue)} hint="Tiền món các nhà hàng, đơn đã giao" />
         <Stat label="Đơn chờ xác nhận" value={String(stats.pending)} highlight={stats.pending > 0} />
       </div>
       <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-6 xl:grid-cols-[1fr_320px]">
         <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-5">
-          <h2 className="font-extrabold">Doanh thu 7 ngày gần nhất</h2>
+          <h2 className="font-extrabold">Doanh số đơn hàng 7 ngày gần nhất</h2>
           <p className="mt-0.5 text-xs text-[#9c918c]">Tính theo ngày giao xong</p>
           <div className="mt-5 flex h-48 gap-2 sm:gap-3">
             {stats.days.map(d => (
@@ -159,41 +164,59 @@ function Overview() {
           <Stat label="Người dùng" value={String(counts.users)} />
         </section>
       </div>
+      <RestaurantSwitches />
     </div>
   )
 }
 
-/** One-tap "tạm đóng cửa" for busy moments; regular hours are set under "Thông tin quán". */
-function StoreSwitch() {
+/** One-tap "tạm đóng cửa" per restaurant for busy moments; regular hours are set under "Nhà hàng". */
+function RestaurantSwitches() {
   const { toast } = useApp()
-  const [store, setStore] = useState<Restaurant | null>(null)
-  const [busy, setBusy] = useState(false)
-  const hours = useStoreHours(store)
-  useEffect(() => { fetchStore(true).then(setStore) }, [])
-  if (!store || !hours) return null
+  const [list, setList] = useState<Restaurant[] | null>(null)
+  const [busy, setBusy] = useState<number | null>(null)
+  useClock()
+  useEffect(() => { fetchRestaurants(true).then(setList) }, [])
+  if (!list?.length) return null
 
-  const toggle = async () => {
-    const next = !store.is_open
-    if (!next && !window.confirm('Tạm đóng cửa? Khách sẽ không đặt được đơn mới cho tới khi bạn mở lại.')) return
-    setBusy(true)
-    const { error } = await supabase.from('fg_restaurants').update({ is_open: next }).eq('id', store.id)
-    setBusy(false)
+  const toggle = async (r: Restaurant) => {
+    const next = !r.is_open
+    if (!next && !window.confirm(`Tạm đóng cửa ${r.name}? Khách sẽ không đặt được đơn mới cho tới khi bạn mở lại.`)) return
+    setBusy(r.id)
+    const { error } = await supabase.from('fg_restaurants').update({ is_open: next }).eq('id', r.id)
+    setBusy(null)
     if (error) return toast(errorMessage(error), 'error')
-    setStore({ ...store, is_open: next })
-    fetchStore(true)
-    toast(next ? 'Đã mở cửa nhận đơn' : 'Đã tạm đóng cửa')
+    setList(l => l?.map(x => (x.id === r.id ? { ...x, is_open: next } : x)) ?? null)
+    fetchRestaurants(true)
+    toast(next ? `${r.name} đã mở cửa nhận đơn` : `${r.name} đã tạm đóng cửa`)
   }
 
-  const status = hours.open ? 'Đang mở cửa' : hours.paused ? 'Đang tạm đóng' : `Ngoài giờ (mở ${hours.reopens})`
+  const openCount = list.filter(r => r.is_active && storeHours(r).open).length
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-white px-3 py-2 shadow-sm">
-      <span className={`size-2.5 rounded-full ${hours.open ? 'bg-[#3eaa68]' : 'bg-[#c9bdb7]'}`} />
-      <span className="text-sm"><b>{status}</b>{hours.hours && <span className="ml-1 text-xs text-[#9c918c]">• {hours.hours}</span>}</span>
-      <button onClick={toggle} disabled={busy}
-        className={`h-9 rounded-lg px-3 text-xs font-bold ${store.is_open ? 'border border-[#eaded8] text-red-500 hover:bg-red-50' : 'bg-[#ff5b35] text-white hover:bg-[#e94c29]'}`}>
-        {store.is_open ? 'Tạm đóng cửa' : 'Mở cửa lại'}
-      </button>
-    </div>
+    <section className="mt-4 rounded-2xl bg-white p-4 shadow-sm sm:mt-6 sm:p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="font-extrabold">Nhà hàng</h2>
+        <span className="text-xs text-[#746b67]"><b className="text-[#241c19]">{openCount}</b> / {list.length} đang mở cửa</span>
+      </div>
+      <ul className="mt-3 divide-y divide-[#f8f3f0]">
+        {list.map(r => {
+          const h = storeHours(r)
+          const status = !r.is_active ? 'Đang ẩn' : h.open ? 'Đang mở cửa' : h.paused ? 'Tạm đóng cửa' : `Ngoài giờ (mở ${h.reopens})`
+          return (
+            <li key={r.id} className="flex items-center gap-3 py-2.5">
+              <span className={`size-2.5 shrink-0 rounded-full ${r.is_active && h.open ? 'bg-[#3eaa68]' : 'bg-[#c9bdb7]'}`} />
+              <div className="min-w-0 flex-1 text-sm">
+                <b className="block truncate">{r.name}</b>
+                <span className="text-xs text-[#746b67]">{status}{h.hours && ` • ${h.hours}`}</span>
+              </div>
+              <button onClick={() => toggle(r)} disabled={busy === r.id || !r.is_active}
+                className={`h-9 shrink-0 rounded-lg px-3 text-xs font-bold disabled:opacity-40 ${r.is_open ? 'border border-[#eaded8] text-red-500 hover:bg-red-50' : 'bg-[#ff5b35] text-white hover:bg-[#e94c29]'}`}>
+                {r.is_open ? 'Tạm đóng' : 'Mở lại'}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
   )
 }
 
@@ -207,260 +230,26 @@ function Stat({ label, value, highlight, hint }: { label: string; value: string;
   )
 }
 
-// ---------------------------------------------------------------- orders
-const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
-  pending: 'confirmed', confirmed: 'preparing', preparing: 'picking_up', picking_up: 'delivering', delivering: 'delivered',
-}
-
-function OrdersAdmin() {
-  const { toast } = useApp()
-  const [orders, setOrders] = useState<Order[] | null>(null)
-  const [filter, setFilter] = useState<'active' | OrderStatus | 'all'>('active')
-  const [open, setOpen] = useState<number | null>(null)
-
-  const load = () => supabase.from('fg_orders').select('*, order_items:fg_order_items(*)').order('created_at', { ascending: false }).limit(200)
-    .then(({ data }) => setOrders((data ?? []) as Order[]))
-  useEffect(() => {
-    load()
-    const channel = supabase.channel('admin-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fg_orders' }, payload => {
-        if (payload.eventType === 'INSERT') toast(`Có đơn mới #${(payload.new as Order).code}`)
-        load()
-      })
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const update = async (o: Order, patch: Partial<Order>) => {
-    const { error } = await supabase.from('fg_orders').update(patch).eq('id', o.id)
-    if (error) return toast(errorMessage(error), 'error')
-    setOrders(list => list?.map(x => (x.id === o.id ? { ...x, ...patch } : x)) ?? null)
-  }
-
-  // cancelled after paying = the shop still owes a refund, so it stays in the "to do" list
-  const needsRefund = (o: Order) => o.status === 'cancelled' && o.payment_status === 'paid'
-  const shown = orders?.filter(o => filter === 'all' ? true
-    : filter === 'active' ? !['delivered', 'cancelled'].includes(o.status) || needsRefund(o)
-    : o.status === filter)
-
-  return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-extrabold">Đơn hàng</h1>
-        <select aria-label="Lọc trạng thái" value={filter} onChange={e => setFilter(e.target.value as typeof filter)} className="h-10 rounded-xl border border-[#eaded8] bg-white px-3 text-sm">
-          <option value="active">Đang xử lý</option>
-          <option value="all">Tất cả</option>
-          {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-      </div>
-      <div className="mt-5 flex flex-col gap-3">
-        {shown === undefined && <Spinner />}
-        {shown?.length === 0 && <p className="rounded-2xl bg-white py-12 text-center text-sm text-[#9c918c] shadow-sm">Không có đơn nào</p>}
-        {shown?.map(o => {
-          const next = NEXT_STATUS[o.status]
-          return (
-            <div key={o.id} className="rounded-2xl bg-white p-4 shadow-sm">
-              {/* row 1: code + order status */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <b className="block truncate">#{o.code}</b>
-                  <p className="mt-0.5 text-xs text-[#9c918c]">{formatDateTime(o.created_at)}</p>
-                </div>
-                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLE[o.status]}`}>{STATUS_LABEL[o.status]}</span>
-              </div>
-              {/* row 2: customer */}
-              <p className="mt-3 text-sm text-[#746b67]">
-                <b className="text-[#241c19]">{o.recipient}</b> • <a href={`tel:${o.phone}`} className="text-[#ff5b35]">{o.phone}</a>
-              </p>
-              <p className="mt-0.5 line-clamp-2 text-xs text-[#9c918c]">{o.address}</p>
-              {/* row 3: total + payment */}
-              <div className="mt-3 flex items-center justify-between gap-3 border-t border-[#f8f3f0] pt-3">
-                <div>
-                  <b className="text-lg text-[#ff5b35]">{money(o.total)}</b>
-                  <span className="ml-2 text-xs text-[#9c918c]">{(o.order_items ?? []).reduce((s, i) => s + i.qty, 0)} món</span>
-                </div>
-                <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold ${
-                  needsRefund(o) ? 'bg-red-50 text-red-600'
-                  : o.payment_status === 'paid' ? 'bg-[#e4f8eb] text-[#3eaa68]'
-                  : o.payment_status === 'refunded' ? 'bg-[#f4f0ee] text-[#746b67]'
-                  : 'bg-[#fff7df] text-[#bd8300]'}`}>
-                  {{ qr: 'QR', cod: 'COD', momo: 'MoMo' }[o.payment_method]} • {
-                    needsRefund(o) ? 'Cần hoàn tiền'
-                    : o.payment_status === 'paid' ? 'Đã TT'
-                    : o.payment_status === 'refunded' ? 'Đã hoàn tiền'
-                    : o.payment_method === 'cod' ? 'Thu khi giao' : 'Chờ tiền vào'}
-                </span>
-              </div>
-              <button onClick={() => setOpen(open === o.id ? null : o.id)} className="mt-2 py-1 text-xs font-bold text-[#ff5b35]">
-                {open === o.id ? 'Ẩn chi tiết ▴' : 'Xem món & ghi chú ▾'}
-              </button>
-              {open === o.id && (
-                <div className="mt-2 grid gap-3 rounded-xl bg-[#fffaf7] p-3 text-sm md:grid-cols-2">
-                  <div>
-                    {(o.order_items ?? []).map(i => <p key={i.id}>{i.qty} × {i.name} <span className="text-[#9c918c]">({money(i.price)})</span></p>)}
-                    <p className="mt-2 text-[#746b67]">Phí ship: {money(o.shipping_fee)}</p>
-                    {o.discount > 0 && <p className="text-[#2f7d4f]">Mã {o.voucher_code}: -{money(o.discount)}</p>}
-                  </div>
-                  <div className="text-[#746b67]">{o.note ? <p><b className="text-[#241c19]">Ghi chú:</b> {o.note}</p> : <p className="text-[#9c918c]">Không có ghi chú</p>}</div>
-                </div>
-              )}
-              {/* actions: main step full-width on phones, secondary buttons share the next row */}
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                {next && (() => {
-                  // payment is settled by a status step (the DB does the same in its trigger):
-                  // online (QR/MoMo) → confirming means the money arrived; COD → delivering means cash collected
-                  const settles = o.payment_status !== 'paid' && (
-                    (next === 'confirmed' && o.payment_method !== 'cod') || (next === 'delivered' && o.payment_method === 'cod'))
-                  const label = !settles ? ORDER_STEPS.find(s => s.status === next)?.label
-                    : o.payment_method === 'cod' ? 'Đã giao & thu tiền' : 'Đã nhận tiền & xác nhận'
-                  return (
-                    <button onClick={() => update(o, settles ? { status: next, payment_status: 'paid' } : { status: next })}
-                      className="col-span-2 h-10 rounded-lg bg-[#ff5b35] px-3 text-sm font-bold text-white hover:bg-[#e94c29]">
-                      → {label}
-                    </button>
-                  )
-                })()}
-                {!['delivered', 'cancelled'].includes(o.status) && (
-                  <button onClick={() => window.confirm(`Hủy đơn #${o.code}?${o.payment_status === 'paid' ? ' Đơn đã thanh toán, bạn sẽ cần hoàn tiền cho khách.' : ''}`) && update(o, { status: 'cancelled' })} className="h-10 rounded-lg border border-[#eaded8] px-3 text-xs font-bold text-red-500 hover:bg-red-50">Hủy đơn</button>
-                )}
-                {needsRefund(o) && (
-                  <button onClick={() => window.confirm(`Xác nhận đã hoàn ${money(o.total)} cho khách (đơn #${o.code})?`) && update(o, { payment_status: 'refunded' })}
-                    className="col-span-2 h-10 rounded-lg bg-red-500 px-3 text-sm font-bold text-white hover:bg-red-600">Đã hoàn tiền cho khách</button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------- catalog
-function useLookups() {
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loaded, setLoaded] = useState(false)
-  useEffect(() => {
-    Promise.all([
-      supabase.from('fg_restaurants').select('*').order('name'),
-      supabase.from('fg_categories').select('*').order('sort'),
-    ]).then(([r, c]) => {
-      setRestaurants((r.data ?? []) as Restaurant[])
-      setCategories((c.data ?? []) as Category[])
-      setLoaded(true)
-    })
-  }, [])
-  return { restaurants, categories, loaded }
-}
-
-const thumb = (src: unknown) => src ? <img src={String(src)} alt="" className="size-12 rounded-lg object-cover" /> : <span className="block size-12 rounded-lg bg-[#f8f3f0]" />
-const yesNo = (v: unknown, yes: string, no: string) => <span className={`rounded-full px-2 py-1 text-xs font-bold ${v ? 'bg-[#e4f8eb] text-[#3eaa68]' : 'bg-[#f4f0ee] text-[#9c918c]'}`}>{v ? yes : no}</span>
-
-function FoodsAdmin() {
-  const { restaurants, categories, loaded } = useLookups()
-  if (!loaded) return <Spinner />
-  if (!restaurants.length) return <p className="rounded-2xl bg-white p-8 text-center text-sm text-[#746b67] shadow-sm">Chưa có thông tin quán. Chạy supabase/migrations/005_single_store.sql.</p>
-  return (
-    <EntityManager
-      table="fg_foods" title="Món ăn" select="*, categories:fg_categories(name)" orderBy="category_id"
-      fields={[
-        { key: 'name', label: 'Tên món', type: 'text', required: true },
-        // single shop: every dish belongs to it
-        { key: 'restaurant_id', label: 'Quán', type: 'hidden', default: restaurants[0].id },
-        { key: 'category_id', label: 'Danh mục', type: 'select', options: categories.map(c => ({ value: c.id, label: c.name })) },
-        { key: 'price', label: 'Giá bán (đ)', type: 'number', required: true },
-        { key: 'old_price', label: 'Giá gốc (đ, để trống nếu không giảm)', type: 'number' },
-        { key: 'description', label: 'Mô tả', type: 'textarea' },
-        { key: 'image', label: 'Ảnh', type: 'image' },
-        { key: 'is_available', label: 'Đang bán', type: 'checkbox' },
-        { key: 'is_popular', label: 'Món nổi bật', type: 'checkbox' },
-      ]}
-      columns={[
-        { label: 'Ảnh', render: r => thumb(r.image) },
-        { label: 'Tên món', render: r => <b>{String(r.name)}</b> },
-        { label: 'Danh mục', render: r => (r.categories as { name: string } | null)?.name ?? '—' },
-        { label: 'Giá', render: r => money(Number(r.price)) },
-        { label: 'Đã bán', render: r => String(r.sold_count) },
-        { label: 'Đánh giá', render: r => Number(r.review_count) > 0 ? `${Number(r.rating).toFixed(1)} ★ (${r.review_count})` : 'Chưa có' },
-        { label: 'Trạng thái', render: r => yesNo(r.is_available, 'Đang bán', 'Tạm hết') },
-      ]}
-    />
-  )
-}
-
+// ---------------------------------------------------------------- restaurants
 function RestaurantsAdmin() {
   return (
     <EntityManager
-      table="fg_restaurants" title="Thông tin quán" orderBy="id" allowCreate={false} allowDelete={false}
-      fields={[
-        { key: 'name', label: 'Tên quán', type: 'text', required: true },
-        { key: 'cuisine', label: 'Món chính (VD: Cơm • Gà rán • Trà sữa)', type: 'text' },
-        { key: 'address', label: 'Địa chỉ', type: 'text', wide: true },
-        { key: 'lat', label: 'Vĩ độ (VD: 10.7739) – chuột phải trên Google Maps để lấy', type: 'number' },
-        { key: 'lng', label: 'Kinh độ (VD: 106.7009)', type: 'number' },
-        { key: 'delivery_time', label: 'Thời gian giao', type: 'text', required: true },
-        { key: 'distance_km', label: 'Khoảng cách (km)', type: 'number' },
-        { key: 'tag', label: 'Nhãn (Freeship, Giảm 20%...)', type: 'text' },
-        { key: 'open_time', label: 'Giờ mở cửa', type: 'time', hint: 'Giờ Việt Nam. Để trống cả hai = mở cả ngày' },
-        { key: 'close_time', label: 'Giờ đóng cửa', type: 'time', hint: 'Đóng sau nửa đêm: vd mở 18:00, đóng 02:00' },
-        { key: 'image', label: 'Ảnh bìa', type: 'image' },
-        { key: 'logo', label: 'Logo', type: 'image' },
-        { key: 'is_open', label: 'Đang mở bán (tắt = tạm đóng cửa)', type: 'checkbox' },
-        { key: 'is_active', label: 'Hiển thị quán (tắt = ẩn hoàn toàn)', type: 'checkbox' },
-      ]}
+      table="fg_restaurants" title="Nhà hàng" orderBy="id"
+      deleteWarning="Toàn bộ món ăn của nhà hàng này cũng bị xóa (đơn hàng cũ vẫn được giữ). Muốn ngừng tạm thời thì nên tắt “Hiển thị nhà hàng”."
+      onChanged={() => fetchRestaurants(true)}
+      fields={restaurantFields(true)}
       columns={[
         { label: 'Ảnh', render: r => thumb(r.image) },
-        { label: 'Tên quán', render: r => <b>{String(r.name)}</b> },
+        { label: 'Tên nhà hàng', render: r => <b>{String(r.name)}</b> },
+        { label: 'Địa chỉ', render: r => <span className="line-clamp-2 max-w-xs text-xs">{r.lat == null ? <span className="font-bold text-[#c2410c]">Chưa ghim vị trí • </span> : null}{String(r.address ?? '')}</span> },
         { label: 'Giờ mở cửa', render: r => storeHours(r as unknown as Restaurant).hours ?? 'Cả ngày' },
-        { label: 'Đánh giá', render: r => `${r.rating} ★` },
-        { label: 'Trạng thái', render: r => yesNo(storeHours(r as unknown as Restaurant).open, 'Đang mở cửa', 'Đã đóng cửa') },
-      ]}
-    />
-  )
-}
-
-// ---------------------------------------------------------------- vouchers
-const VOUCHER_TYPES = [
-  { value: 'amount', label: 'Giảm số tiền (đ)' },
-  { value: 'percent', label: 'Giảm theo %' },
-  { value: 'freeship', label: 'Miễn phí giao hàng' },
-]
-
-const describeVoucher = (r: Record<string, unknown>) => {
-  const value = Number(r.discount_value)
-  const main = r.discount_type === 'percent' ? `Giảm ${value}%${r.max_discount ? ` (tối đa ${money(Number(r.max_discount))})` : ''}`
-    : r.discount_type === 'freeship' ? 'Freeship' : `Giảm ${money(value)}`
-  return Number(r.min_subtotal) > 0 ? `${main} • đơn từ ${money(Number(r.min_subtotal))}` : main
-}
-
-const fmtDate = (d: unknown) => d ? new Date(`${String(d).slice(0, 10)}T00:00:00`).toLocaleDateString('vi-VN') : null
-
-function VouchersAdmin() {
-  return (
-    <EntityManager
-      table="fg_vouchers" title="Mã giảm giá" select="*, fg_used_count" orderBy="created_at" searchKey="code"
-      fields={[
-        { key: 'code', label: 'Mã (VD: GIAM20K)', type: 'text', required: true, hint: 'Tự chuyển thành chữ HOA, bỏ khoảng trắng' },
-        { key: 'discount_type', label: 'Loại giảm giá', type: 'select', required: true, options: VOUCHER_TYPES },
-        { key: 'discount_value', label: 'Mức giảm (số tiền hoặc %)', type: 'number', required: true, default: 0, hint: 'Freeship: nhập 0' },
-        { key: 'max_discount', label: 'Giảm tối đa (đ, cho mã %)', type: 'number' },
-        { key: 'min_subtotal', label: 'Đơn tối thiểu (đ, tiền món)', type: 'number', required: true, default: 0 },
-        { key: 'usage_limit', label: 'Tổng lượt dùng (trống = không giới hạn)', type: 'number' },
-        { key: 'per_user_limit', label: 'Lượt dùng mỗi khách', type: 'number', default: 1, hint: 'Trống = không giới hạn' },
-        { key: 'starts_on', label: 'Áp dụng từ ngày', type: 'date' },
-        { key: 'expires_on', label: 'Hết hạn sau ngày', type: 'date' },
-        { key: 'description', label: 'Mô tả cho khách (VD: Giảm 20k cho đơn từ 80k)', type: 'text', wide: true },
-        { key: 'is_active', label: 'Đang bật', type: 'checkbox' },
-      ]}
-      columns={[
-        { label: 'Biểu tượng', render: () => <span className="grid size-12 place-items-center rounded-lg bg-[#fff0eb] text-[#ff5b35]"><TicketPercent className="size-5" /></span> },
-        { label: 'Mã', render: r => <b className="font-mono">{String(r.code)}</b> },
-        { label: 'Ưu đãi', render: r => describeVoucher(r) },
-        { label: 'Đã dùng', render: r => `${Number(r.fg_used_count ?? 0)}${r.usage_limit ? ` / ${r.usage_limit}` : ''}` },
-        { label: 'Hạn dùng', render: r => [fmtDate(r.starts_on), fmtDate(r.expires_on)].some(Boolean) ? `${fmtDate(r.starts_on) ?? '…'} → ${fmtDate(r.expires_on) ?? '…'}` : 'Không thời hạn' },
-        { label: 'Trạng thái', render: r => yesNo(r.is_active && !(r.expires_on && String(r.expires_on) < new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' })), 'Đang bật', r.is_active ? 'Hết hạn' : 'Đã tắt') },
+        { label: 'Phí duy trì', render: r => {
+          const s = subscriptionOf(r as unknown as Restaurant)
+          return !r.owner_id ? <span className="text-xs text-[#9c918c]">Admin quản lý</span>
+            : s.active ? <span className="text-xs">Còn {s.daysLeft} ngày</span>
+            : <span className="text-xs font-bold text-[#c2410c]">Hết hạn</span>
+        } },
+        { label: 'Trạng thái', render: r => restaurantStatus(r) },
       ]}
     />
   )
@@ -546,9 +335,18 @@ function ReviewsAdmin() {
 function UsersAdmin() {
   const { user, toast } = useApp()
   const [users, setUsers] = useState<(Profile & { created_at: string })[] | null>(null)
-  const load = () => supabase.from('fg_profiles').select('*').order('created_at', { ascending: false })
-    .then(({ data }) => setUsers((data ?? []) as (Profile & { created_at: string })[]))
+  // user id → the restaurant they own
+  const [owned, setOwned] = useState<Record<string, string>>({})
+  const load = () => {
+    supabase.from('fg_profiles').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => setUsers((data ?? []) as (Profile & { created_at: string })[]))
+    supabase.from('fg_restaurants').select('name, owner_id').not('owner_id', 'is', null)
+      .then(({ data }) => setOwned(Object.fromEntries((data ?? []).map(r => [r.owner_id as string, r.name as string]))))
+  }
   useEffect(() => { load() }, [])
+  const role = (p: Profile) => p.role === 'admin' ? yesNo(true, 'Admin', '')
+    : owned[p.id] ? <span className="rounded-full bg-[#fff0eb] px-2 py-1 text-xs font-bold text-[#ff5b35]">Chủ: {owned[p.id]}</span>
+    : yesNo(false, '', 'Khách hàng')
 
   const setRole = async (p: Profile, role: Profile['role']) => {
     if (!window.confirm(role === 'admin' ? `Cấp quyền admin cho ${p.full_name}?` : `Gỡ quyền admin của ${p.full_name}?`)) return
@@ -571,13 +369,16 @@ function UsersAdmin() {
             <div className="min-w-0 flex-1 text-sm">
               <b className="block truncate">{p.full_name || '—'}</b>
               <p className="truncate text-xs text-[#9c918c]">{p.phone || 'Chưa có SĐT'} • {formatDateTime(p.created_at)}</p>
-              <div className="mt-1">{yesNo(p.role === 'admin', 'Admin', 'Khách hàng')}</div>
+              <div className="mt-1">{role(p)}</div>
             </div>
-            {p.id !== user?.id && (
-              <button onClick={() => setRole(p, p.role === 'admin' ? 'customer' : 'admin')} className="shrink-0 rounded-lg border border-[#eaded8] px-3 py-2 text-xs font-bold text-[#ff5b35]">
-                {p.role === 'admin' ? 'Gỡ admin' : 'Cấp admin'}
-              </button>
-            )}
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <GrantRestaurantButton user={p} ownedName={owned[p.id]} onDone={load} />
+              {p.id !== user?.id && (
+                <button onClick={() => setRole(p, p.role === 'admin' ? 'customer' : 'admin')} className="rounded-lg border border-[#eaded8] px-3 py-2 text-xs font-bold text-[#ff5b35]">
+                  {p.role === 'admin' ? 'Gỡ admin' : 'Cấp admin'}
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -593,8 +394,9 @@ function UsersAdmin() {
                 <td className="px-4 py-3"><b>{p.full_name || '—'}</b></td>
                 <td className="px-4 py-3">{p.phone || '—'}</td>
                 <td className="px-4 py-3">{formatDateTime(p.created_at)}</td>
-                <td className="px-4 py-3">{yesNo(p.role === 'admin', 'Admin', 'Khách hàng')}</td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3">{role(p)}</td>
+                <td className="flex items-center justify-end gap-4 px-4 py-3">
+                  <GrantRestaurantButton user={p} ownedName={owned[p.id]} onDone={load} />
                   {p.id !== user?.id && (
                     <button onClick={() => setRole(p, p.role === 'admin' ? 'customer' : 'admin')} className="py-2 text-xs font-bold text-[#ff5b35]">
                       {p.role === 'admin' ? 'Gỡ admin' : 'Cấp admin'}

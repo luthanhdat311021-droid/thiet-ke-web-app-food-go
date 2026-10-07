@@ -116,7 +116,11 @@ function OrderDetail() {
         <h1 className="text-3xl font-extrabold">Đơn #{order.code}</h1>
         <span className={`rounded-full px-3 py-1 text-sm font-bold ${STATUS_STYLE[order.status]}`}>{STATUS_LABEL[order.status]}</span>
       </div>
-      <p className="mt-1 text-sm text-[#9c918c]">{formatDateTime(order.created_at)}</p>
+      <p className="mt-1 text-sm text-[#9c918c]">
+        {order.restaurant_id
+          ? <Link href={`/restaurant/${order.restaurant_id}`} className="font-bold text-[#ff5b35] hover:underline">{order.restaurant_name}</Link>
+          : <b className="text-[#241c19]">{order.restaurant_name}</b>} • {formatDateTime(order.created_at)}
+      </p>
 
       <div className="mt-8 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="flex flex-col gap-6">

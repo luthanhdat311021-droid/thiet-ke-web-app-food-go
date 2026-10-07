@@ -4,16 +4,41 @@ import { useEffect, useState } from 'react'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import type { Restaurant } from '@/lib/types'
 
-// FoodGo serves a single shop: the one row of fg_restaurants holds its name, address and location.
-let cache: Promise<Restaurant | null> | null = null
+// Restaurants change rarely: one shared list per page load (RLS hides inactive ones from customers).
+let cache: Promise<Restaurant[]> | null = null
 
-export function fetchStore(fresh = false) {
-  if (!isSupabaseConfigured) return Promise.resolve(null)
+export function fetchRestaurants(fresh = false) {
+  if (!isSupabaseConfigured) return Promise.resolve([])
   if (!cache || fresh) {
-    cache = Promise.resolve(supabase.from('fg_restaurants').select('*').order('id').limit(1).maybeSingle())
-      .then(({ data }) => (data as Restaurant | null))
+    cache = Promise.resolve(supabase.from('fg_restaurants').select('*').order('id'))
+      .then(({ data }) => (data ?? []) as Restaurant[])
   }
   return cache
+}
+
+/** Always fresh: hours / "tạm đóng cửa" may have just changed. */
+export async function fetchRestaurant(id: number) {
+  if (!isSupabaseConfigured) return null
+  const { data } = await supabase.from('fg_restaurants').select('*').eq('id', id).maybeSingle()
+  return data as Restaurant | null
+}
+
+/** undefined while loading. */
+export function useRestaurants() {
+  const [list, setList] = useState<Restaurant[] | undefined>(undefined)
+  useEffect(() => { fetchRestaurants().then(setList) }, [])
+  return list
+}
+
+/** undefined while loading, null if it doesn't exist (or is hidden). */
+export function useRestaurant(id: number | null | undefined) {
+  const [r, setR] = useState<Restaurant | null | undefined>(undefined)
+  useEffect(() => {
+    if (!id) { setR(null); return }
+    setR(undefined)
+    fetchRestaurant(id).then(setR)
+  }, [id])
+  return r
 }
 
 const hhmm = (t: string) => t.slice(0, 5)
@@ -46,9 +71,11 @@ export function useStoreHours(s: Restaurant | null | undefined) {
   return s ? storeHours(s) : null
 }
 
-/** undefined while loading, null if the shop isn't set up yet. */
-export function useStore() {
-  const [store, setStore] = useState<Restaurant | null | undefined>(undefined)
-  useEffect(() => { fetchStore().then(setStore) }, [])
-  return store
+/** Same as useStoreHours for a whole list (one timer). */
+export function useClock() {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 60000)
+    return () => clearInterval(id)
+  }, [])
 }

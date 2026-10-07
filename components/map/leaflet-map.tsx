@@ -72,16 +72,15 @@ export default function LeafletMap({ markers = [], route, picker, onPick, fitPoi
       {route && route.length > 1 && <Polyline positions={route} pathOptions={{ color: '#ff5b35', weight: 5, opacity: 0.85 }} />}
       {markers.map(m => <Marker key={m.id} position={m.pos} icon={ICONS[m.kind]} title={m.label} zIndexOffset={m.kind === 'driver' ? 1000 : 0} />)}
       {picker && onPick && (
-        <>
-          <Marker
-            position={[picker.lat, picker.lng]}
-            icon={PICK_ICON}
-            draggable
-            eventHandlers={{ dragend: e => { const p = (e.target as L.Marker).getLatLng(); onPick({ lat: p.lat, lng: p.lng }) } }}
-          />
-          <PickOnClick onPick={onPick} />
-        </>
+        <Marker
+          position={[picker.lat, picker.lng]}
+          icon={PICK_ICON}
+          draggable
+          eventHandlers={{ dragend: e => { const p = (e.target as L.Marker).getLatLng(); onPick({ lat: p.lat, lng: p.lng }) } }}
+        />
       )}
+      {/* clicking also works before any pin exists (e.g. a new restaurant) */}
+      {onPick && <PickOnClick onPick={onPick} />}
     </MapContainer>
   )
 }

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Heart, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, Package, Pencil, Plus, Trash2, User } from 'lucide-react'
+import { Heart, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, Package, Pencil, Plus, Store, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RequireAuth } from '@/components/require-auth'
 import { EmptyState, FoodCard, FOOD_SELECT, Panel, Spinner } from '@/components/cards'
@@ -43,6 +43,7 @@ function Account() {
             </button>
           ))}
           <Link href="/orders" className="flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm text-[#746b67] hover:bg-[#fffaf7]"><Package className="size-4" />Đơn hàng</Link>
+          <Link href="/shop" className="flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm text-[#746b67] hover:bg-[#fffaf7]"><Store className="size-4" />Kênh nhà hàng</Link>
           {profile?.role === 'admin' && <Link href="/admin" className="flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm text-[#746b67] hover:bg-[#fffaf7]"><LayoutDashboard className="size-4" />Trang quản trị</Link>}
           <button onClick={signOut} className="flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-red-500 hover:bg-red-50"><LogOut className="size-4" />Đăng xuất</button>
         </aside>

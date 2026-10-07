@@ -16,7 +16,7 @@ const short = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1).replace('.0', ''
 const pct = (n: number) => `${(n * 100).toFixed(1).replace('.0', '')}%`
 
 /** Revenue is counted on the day an order was delivered (same rule as "Tổng quan"); order counts use the day it was placed. */
-export function StatsAdmin() {
+export function StatsAdmin({ restaurantId, title = 'Thống kê' }: { restaurantId?: number; title?: string } = {}) {
   const [range, setRange] = useState<Range>(30)
   const [orders, setOrders] = useState<Order[] | null>(null)
   const [reviews, setReviews] = useState<{ rating: number; updated_at: string }[]>([])
@@ -29,18 +29,22 @@ export function StatsAdmin() {
     ;(async () => {
       const all: Order[] = []
       for (let from = 0; ; from += 1000) {
-        const { data } = await supabase.from('fg_orders').select('*, order_items:fg_order_items(*)')
-          .or(`created_at.gte.${since},delivered_at.gte.${since}`).order('id').range(from, from + 999)
+        let q = supabase.from('fg_orders').select('*, order_items:fg_order_items(*)')
+          .or(`created_at.gte.${since},delivered_at.gte.${since}`)
+        if (restaurantId) q = q.eq('restaurant_id', restaurantId)
+        const { data } = await q.order('id').range(from, from + 999)
         all.push(...((data ?? []) as Order[]))
         if (!data || data.length < 1000) break
       }
-      const { data: r } = await supabase.from('fg_reviews').select('rating, updated_at').gte('updated_at', since)
+      const { data: r } = restaurantId
+        ? await supabase.from('fg_reviews').select('rating, updated_at, food:fg_foods!inner(restaurant_id)').eq('food.restaurant_id', restaurantId).gte('updated_at', since)
+        : await supabase.from('fg_reviews').select('rating, updated_at').gte('updated_at', since)
       if (cancelled) return
       setOrders(all)
-      setReviews(r ?? [])
+      setReviews((r ?? []) as { rating: number; updated_at: string }[])
     })()
     return () => { cancelled = true }
-  }, [range])
+  }, [range, restaurantId])
 
   const s = useMemo(() => orders && compute(orders, reviews, range), [orders, reviews, range])
 
@@ -48,7 +52,7 @@ export function StatsAdmin() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold">Thống kê</h1>
+          <h1 className="text-2xl font-extrabold">{title}</h1>
           <p className="mt-0.5 text-xs text-[#9c918c]">So với {range} ngày liền trước</p>
         </div>
         <div className="flex rounded-xl bg-white p-1 shadow-sm" role="tablist" aria-label="Khoảng thời gian">
@@ -75,6 +79,21 @@ export function StatsAdmin() {
           </Card>
 
           <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-6 xl:grid-cols-2">
+            {s.restaurants.length > 1 && (
+              <Card title="Doanh thu theo nhà hàng" sub="Đơn đã giao" className="xl:col-span-2">
+                <ol className="grid gap-x-8 gap-y-3 md:grid-cols-2">
+                  {s.restaurants.map(r => (
+                    <li key={r.name} className="text-sm">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <b className="min-w-0 truncate">{r.name}</b>
+                        <span className="shrink-0 text-xs text-[#746b67]"><b className="text-[#241c19]">{money(r.revenue)}</b> • {r.count} đơn • {pct(s.cur.revenue ? r.revenue / s.cur.revenue : 0)}</span>
+                      </div>
+                      <Bar ratio={r.revenue / s.restaurants[0].revenue} />
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            )}
             <Card title="Món bán chạy" sub="Theo số phần đã giao">
               {s.topFoods.length === 0 ? <Empty /> : (
                 <ol className="flex flex-col gap-3">
@@ -198,6 +217,14 @@ function compute(orders: Order[], reviews: { rating: number; updated_at: string 
     return { method, count: list.length, revenue: list.reduce((t, o) => t + o.total, 0), share: cur.delivered ? list.length / cur.delivered : 0 }
   })
 
+  const rmap = new Map<string, { name: string; count: number; revenue: number }>()
+  for (const o of cur.deliveredList) {
+    const r = rmap.get(o.restaurant_name) ?? { name: o.restaurant_name, count: 0, revenue: 0 }
+    r.count++; r.revenue += o.total
+    rmap.set(o.restaurant_name, r)
+  }
+  const restaurants = [...rmap.values()].sort((a, b) => b.revenue - a.revenue)
+
   const vmap = new Map<string, { code: string; count: number; discount: number }>()
   for (const o of cur.deliveredList) if (o.voucher_code) {
     const v = vmap.get(o.voucher_code) ?? { code: o.voucher_code, count: 0, discount: 0 }
@@ -206,7 +233,7 @@ function compute(orders: Order[], reviews: { rating: number; updated_at: string 
   }
   const vouchers = [...vmap.values()].sort((a, b) => b.count - a.count)
 
-  return { cur, prev, revenueSeries, hours, topFoods, payments, vouchers }
+  return { cur, prev, revenueSeries, hours, topFoods, payments, vouchers, restaurants }
 }
 
 /** relative change; null when there's nothing to compare against */

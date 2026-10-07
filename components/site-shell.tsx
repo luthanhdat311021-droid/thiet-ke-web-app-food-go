@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useEffect, useRef, useState } from 'react'
 import {
   Bell, ChevronDown, Heart, Home, LayoutDashboard, Loader2, LogIn, LogOut, MapPin, Minus, Package, Plus,
-  Search, ShoppingBag, ShoppingCart, Trash2, User, UtensilsCrossed, X,
+  Search, ShoppingBag, ShoppingCart, Store, Trash2, User, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
@@ -16,7 +16,7 @@ import { money, shippingFee, FREE_SHIP_FROM, timeAgo } from '@/lib/format'
 
 export function SiteShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  if (pathname.startsWith('/admin')) return <>{children}</>
+  if (pathname.startsWith('/admin') || pathname.startsWith('/shop')) return <>{children}</>
   return (
     <div className="min-h-screen bg-[#fffaf7] text-[#241c19]">
       <Header />
@@ -152,6 +152,7 @@ function Header() {
               { href: '/orders', label: 'Đơn hàng của tôi', Icon: Package },
               { href: '/account?tab=addresses', label: 'Địa chỉ', Icon: MapPin },
               { href: '/account?tab=favorites', label: 'Món yêu thích', Icon: Heart },
+              { href: '/shop', label: 'Kênh nhà hàng', Icon: Store },
               ...(profile?.role === 'admin' ? [{ href: '/admin', label: 'Trang quản trị', Icon: LayoutDashboard }] : []),
             ]).map(({ href, label, Icon }) => (
               <Link key={href} href={href} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-[#fff5f1]">
@@ -167,7 +168,7 @@ function Header() {
             <div className="mt-2 max-h-96 overflow-y-auto">
               {notifications.length === 0 && <p className="py-8 text-center text-sm text-[#9c918c]">Chưa có thông báo nào</p>}
               {notifications.map(n => (
-                <Link key={n.id} href={n.order_id ? `/orders/${n.order_id}` : '/orders'} className="mt-2 flex gap-3 rounded-xl p-2 text-sm hover:bg-[#fff5f1]">
+                <Link key={n.id} href={n.link ?? (n.order_id ? `/orders/${n.order_id}` : '/orders')} className="mt-2 flex gap-3 rounded-xl p-2 text-sm hover:bg-[#fff5f1]">
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-[#fff0eb] text-[#ff5b35]"><Bell className="size-4" /></span>
                   <span><b className="block">{n.title}</b>{n.body}<small className="mt-1 block text-[#9c918c]">{timeAgo(n.created_at)}</small></span>
                 </Link>
@@ -189,7 +190,7 @@ function BottomNav() {
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-20 flex justify-around border-t border-[#f1e7e2] bg-white p-3 sm:hidden">
       {item('/', 'Trang chủ', <Home />, pathname === '/')}
-      {item('/menu', 'Thực đơn', <UtensilsCrossed />, pathname.startsWith('/menu') || pathname.startsWith('/search'))}
+      {item('/menu', 'Nhà hàng', <Store />, pathname.startsWith('/menu') || pathname.startsWith('/restaurant') || pathname.startsWith('/search'))}
       {item('/orders', 'Đơn hàng', <Package />, pathname.startsWith('/orders'))}
       <button onClick={() => setCartOpen(true)} className="relative flex flex-col items-center gap-1 text-xs text-[#9c918c]">
         <ShoppingBag />
@@ -218,7 +219,11 @@ function CartDrawer() {
       <aside role="dialog" aria-label="Giỏ hàng" onClick={e => e.stopPropagation()} className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
         <div className="flex items-center justify-between px-6 pt-[max(1.5rem,env(safe-area-inset-top))]">
           <div>
-            <p className="text-xs font-bold text-[#ff5b35]">QUÁN FOODGO</p>
+            {cart[0] && (
+              <Link href={`/restaurant/${cart[0].restaurant_id}`} onClick={() => setCartOpen(false)} className="text-xs font-bold uppercase text-[#ff5b35] hover:underline">
+                {cart[0].restaurant_name}
+              </Link>
+            )}
             <h2 className="mt-1 text-2xl font-extrabold">Giỏ hàng của bạn</h2>
           </div>
           <button aria-label="Đóng giỏ hàng" onClick={() => setCartOpen(false)} className="grid size-10 place-items-center rounded-full bg-[#f8f3f0]"><X /></button>
@@ -245,7 +250,7 @@ function CartDrawer() {
             <div className="py-20 text-center">
               <ShoppingBag className="mx-auto size-12 text-[#ffb9a5]" />
               <h3 className="mt-4 font-bold">Giỏ hàng đang trống</h3>
-              <Button onClick={() => { setCartOpen(false); router.push('/menu') }} variant="outline" className="mt-5 h-11 rounded-xl px-5">Xem thực đơn</Button>
+              <Button onClick={() => { setCartOpen(false); router.push('/menu') }} variant="outline" className="mt-5 h-11 rounded-xl px-5">Xem nhà hàng</Button>
             </div>
           )}
           {cart.length > 0 && <button onClick={clearCart} className="mt-4 py-2 text-sm font-semibold text-[#9c918c] hover:text-red-500">Xóa tất cả</button>}

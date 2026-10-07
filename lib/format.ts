@@ -8,7 +8,7 @@ export const shippingFee = (subtotal: number) => (subtotal >= FREE_SHIP_FROM ? 0
 
 export const ORDER_STEPS: { status: OrderStatus; label: string }[] = [
   { status: 'pending', label: 'Đơn hàng đã đặt' },
-  { status: 'confirmed', label: 'Quán đã xác nhận' },
+  { status: 'confirmed', label: 'Nhà hàng đã xác nhận' },
   { status: 'preparing', label: 'Đang chuẩn bị món' },
   { status: 'picking_up', label: 'Tài xế đang lấy hàng' },
   { status: 'delivering', label: 'Đang giao hàng' },

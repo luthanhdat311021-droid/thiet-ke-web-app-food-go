@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Heart, Loader2, MessageSquareText, Minus, Plus, Star, X } from 'lucide-react'
+import Link from 'next/link'
+import { Heart, Loader2, MessageSquareText, Minus, Plus, Star, Store, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
@@ -68,6 +69,11 @@ export function FoodDetailSheet({ food, onClose }: { food: Food; onClose: () => 
               <h2 className="text-2xl font-extrabold">{food.name}</h2>
               <button aria-label={liked ? 'Bỏ yêu thích' : 'Yêu thích'} onClick={() => toggleFavorite(food.id)} className="-m-1 p-1 text-[#ff5b35]"><Heart className={`size-6 ${liked ? 'fill-current' : ''}`} /></button>
             </div>
+            {food.restaurants && (
+              <Link href={`/restaurant/${food.restaurants.id}`} onClick={onClose} className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-[#746b67] hover:text-[#ff5b35]">
+                <Store className="size-4" />{food.restaurants.name}
+              </Link>
+            )}
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <RatingBadge rating={food.rating} count={food.review_count ?? 0} className="text-sm" />
               {food.sold_count > 0 && <span className="text-xs text-[#9c918c]">Đã bán {food.sold_count}</span>}

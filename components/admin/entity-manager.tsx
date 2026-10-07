@@ -5,14 +5,17 @@ import { ImagePlus, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
+import { LocationPicker } from '@/components/admin/location-picker'
 
 export type FieldDef = {
   key: string
   label: string
   /** 'hidden': not shown in the form; new rows get `default` */
-  type: 'text' | 'number' | 'textarea' | 'image' | 'select' | 'checkbox' | 'date' | 'time' | 'hidden'
+  /** 'location': map pin stored in the row's lat/lng (key is just a name); fills `addressKey` too */
+  type: 'text' | 'number' | 'textarea' | 'image' | 'select' | 'checkbox' | 'date' | 'time' | 'location' | 'hidden'
   required?: boolean
   hint?: string
+  addressKey?: string
   options?: { value: number | string; label: string }[]
   wide?: boolean
   default?: unknown
@@ -21,8 +24,11 @@ export type FieldDef = {
 type Row = Record<string, unknown> & { id: number }
 
 /** Generic list + create/edit/delete for a simple Supabase table (admin RLS required). */
-export function EntityManager({ table, title, fields, columns, select = '*', orderBy = 'id', searchKey = 'name', allowCreate = true, allowDelete = true }: {
+export function EntityManager({ table, title, fields, columns, select = '*', orderBy = 'id', searchKey = 'name', allowCreate = true, allowDelete = true, deleteWarning, filter, onChanged, match }: {
   table: string
+  /** only rows with these column values (e.g. one restaurant's dishes); RLS still applies */
+  match?: Record<string, string | number>
+
   title: string
   fields: FieldDef[]
   columns: { label: string; render: (row: Row) => React.ReactNode }[]
@@ -31,25 +37,42 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
   searchKey?: string
   allowCreate?: boolean
   allowDelete?: boolean
+  /** extra sentence in the delete confirmation */
+  deleteWarning?: string
+  /** dropdown that narrows the list by one column */
+  filter?: { key: string; label: string; options: { value: number | string; label: string }[] }
+  /** after any create / update / delete */
+  onChanged?: () => void
 }) {
   const { toast } = useApp()
   const [rows, setRows] = useState<Row[] | null>(null)
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null)
   const [busy, setBusy] = useState(false)
   const [q, setQ] = useState('')
+  const [filterValue, setFilterValue] = useState('')
 
-  const load = () => supabase.from(table).select(select).order(orderBy).then(({ data, error }) => {
-    if (error) toast(errorMessage(error), 'error')
-    setRows((data ?? []) as unknown as Row[])
-  })
+  const matchKey = JSON.stringify(match ?? {})
+  const load = () => {
+    let query = supabase.from(table).select(select)
+    for (const [k, v] of Object.entries(match ?? {})) query = query.eq(k, v)
+    return query.order(orderBy).then(({ data, error }) => {
+      if (error) toast(errorMessage(error), 'error')
+      setRows((data ?? []) as unknown as Row[])
+    })
+  }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load() }, [table])
+  useEffect(() => { load() }, [table, matchKey])
 
-  const shown = useMemo(() => rows?.filter(r => !q || String(r[searchKey] ?? '').toLowerCase().includes(q.toLowerCase())), [rows, q, searchKey])
+  const shown = useMemo(() => rows?.filter(r =>
+    (!q || String(r[searchKey] ?? '').toLowerCase().includes(q.toLowerCase()))
+    && (!filter || !filterValue || String(r[filter.key]) === filterValue)), [rows, q, searchKey, filter, filterValue])
 
   const startCreate = () => {
     const blank: Record<string, unknown> = {}
-    for (const f of fields) blank[f.key] = f.default !== undefined ? f.default : f.type === 'checkbox' ? true : f.type === 'select' ? f.options?.[0]?.value ?? null : ''
+    for (const f of fields) {
+      if (f.type === 'location') { blank.lat = null; blank.lng = null; continue }
+      blank[f.key] = f.default !== undefined ? f.default : f.type === 'checkbox' ? true : f.type === 'select' ? f.options?.[0]?.value ?? null : ''
+    }
     setEditing(blank)
   }
 
@@ -58,6 +81,13 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
     if (!editing) return
     const payload: Record<string, unknown> = {}
     for (const f of fields) {
+      if (f.type === 'location') {
+        const has = editing.lat != null && editing.lng != null && editing.lat !== '' && editing.lng !== ''
+        if (f.required && !has) return toast(`Vui lòng ghim ${f.label.toLowerCase()} trên bản đồ`, 'error')
+        payload.lat = has ? Number(editing.lat) : null
+        payload.lng = has ? Number(editing.lng) : null
+        continue
+      }
       const v = editing[f.key]
       payload[f.key] = f.type === 'number' ? (v === '' || v === null ? null : Number(v))
         : f.type === 'select' ? (v === '' || v === null ? null : Number.isNaN(Number(v)) ? v : Number(v))
@@ -73,21 +103,29 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
     toast(editing.id ? 'Đã cập nhật' : 'Đã thêm mới')
     setEditing(null)
     load()
+    onChanged?.()
   }
 
   const remove = async (row: Row) => {
-    if (!window.confirm(`Xóa "${String(row[searchKey] ?? row.id)}"? Thao tác này không thể hoàn tác.`)) return
+    if (!window.confirm(`Xóa "${String(row[searchKey] ?? row.id)}"? ${deleteWarning ? `${deleteWarning} ` : ''}Thao tác này không thể hoàn tác.`)) return
     const { error } = await supabase.from(table).delete().eq('id', row.id)
     if (error) return toast(errorMessage(error), 'error')
     toast('Đã xóa')
     load()
+    onChanged?.()
   }
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-extrabold">{title}</h2>
-        <div className="flex w-full gap-2 sm:w-auto">
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:flex-nowrap">
+          {filter && (
+            <select aria-label={filter.label} value={filterValue} onChange={e => setFilterValue(e.target.value)} className="h-10 w-full rounded-xl border border-[#eaded8] bg-white px-3 text-sm sm:w-48">
+              <option value="">{filter.label}: tất cả</option>
+              {filter.options.map(o => <option key={o.value} value={String(o.value)}>{o.label}</option>)}
+            </select>
+          )}
           <div className="relative flex-1 sm:flex-none">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#9c918c]" />
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm..." aria-label="Tìm kiếm" className="h-10 w-full sm:w-44 rounded-xl border border-[#eaded8] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#ff5b35]" />
@@ -153,8 +191,21 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
             </div>
             <div className="grid flex-1 content-start gap-4 overflow-y-auto p-5 sm:grid-cols-2">
               {fields.filter(f => f.type !== 'hidden').map(f => (
-                <div key={f.key} className={f.wide || f.type === 'textarea' || f.type === 'image' ? 'sm:col-span-2' : ''}>
-                  <FieldInput def={f} value={editing[f.key]} onChange={v => setEditing({ ...editing, [f.key]: v })} />
+                <div key={f.key} className={f.wide || f.type === 'textarea' || f.type === 'image' || f.type === 'location' ? 'sm:col-span-2' : ''}>
+                  {f.type === 'location' ? (
+                    <div className="text-sm font-semibold">
+                      {f.label}{f.required && <span className="text-[#ff5b35]"> *</span>}
+                      <div className="mt-2">
+                        <LocationPicker
+                          value={{ lat: editing.lat as number | null, lng: editing.lng as number | null, address: f.addressKey ? (editing[f.addressKey] as string | null) : null }}
+                          // functional update: the picker reports the address after an async lookup
+                          onChange={({ address, ...pos }) => setEditing(e => e && ({ ...e, ...pos, ...(f.addressKey && address !== undefined ? { [f.addressKey]: address } : {}) }))}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <FieldInput def={f} value={editing[f.key]} onChange={v => setEditing(e => e && ({ ...e, [f.key]: v }))} />
+                  )}
                 </div>
               ))}
             </div>
@@ -204,13 +255,14 @@ function FieldInput({ def, value, onChange }: { def: FieldDef; value: unknown; o
   )
 }
 
-function ImageInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const { toast } = useApp()
+export function ImageInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { toast, user } = useApp()
   const [uploading, setUploading] = useState(false)
   const upload = async (file: File) => {
     if (file.size > 5 * 1024 * 1024) return toast('Ảnh tối đa 5MB', 'error')
     setUploading(true)
-    const path = `${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`
+    // each account uploads into its own folder (storage policy for restaurant owners)
+    const path = `${user?.id ?? 'public'}/${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`
     const { error } = await supabase.storage.from('fg-images').upload(path, file, { contentType: file.type })
     setUploading(false)
     if (error) return toast(errorMessage(error), 'error')

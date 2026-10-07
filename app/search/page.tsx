@@ -4,8 +4,9 @@ import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { SearchX } from 'lucide-react'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
-import type { Category, Food, Restaurant } from '@/lib/types'
-import { CardSkeleton, EmptyState, FoodCard, FOOD_SELECT, Spinner } from '@/components/cards'
+import type { Category, Food } from '@/lib/types'
+import { useRestaurants } from '@/lib/store'
+import { CardSkeleton, EmptyState, FoodCard, FOOD_SELECT, RestaurantCard, Spinner } from '@/components/cards'
 
 const SORTS = [
   { value: 'popular', label: 'Phổ biến nhất' },
@@ -57,6 +58,11 @@ function SearchContent() {
   }, [q, categoryId, sort])
 
   const list = foods
+  const restaurants = useRestaurants()
+  const term = q.trim().toLowerCase()
+  const matchedRestaurants = term && !categoryId
+    ? (restaurants ?? []).filter(r => `${r.name} ${r.cuisine ?? ''}`.toLowerCase().includes(term)).slice(0, 4)
+    : []
 
   return (
     <main className="mx-auto max-w-[1400px] px-5 pb-24 pt-8 lg:px-10">
@@ -72,6 +78,13 @@ function SearchContent() {
           {SORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
       </div>
+
+      {matchedRestaurants.length > 0 && (
+        <section className="mt-6">
+          <h2 className="font-extrabold">Nhà hàng</h2>
+          <div className="mt-3 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{matchedRestaurants.map(r => <RestaurantCard key={r.id} r={r} />)}</div>
+        </section>
+      )}
 
       <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
         <Chip active={!categoryId} onClick={() => update({ category: null })}>Tất cả</Chip>

@@ -63,7 +63,7 @@ function Orders() {
           return (
             <Link key={o.id} href={awaitingReview ? `/orders/${o.id}#danh-gia` : `/orders/${o.id}`} className="block rounded-2xl bg-white p-5 shadow-sm transition hover:shadow-md">
               <div className="flex items-start justify-between gap-3">
-                <div><b>Đơn #{o.code}</b><p className="mt-1 text-xs text-[#9c918c]">{formatDateTime(o.created_at)}</p></div>
+                <div className="min-w-0"><b className="block truncate">{o.restaurant_name}</b><p className="mt-1 text-xs text-[#9c918c]">Đơn #{o.code} • {formatDateTime(o.created_at)}</p></div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLE[o.status]}`}>{STATUS_LABEL[o.status]}</span>
                   {awaitingReview && (

@@ -2,8 +2,8 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { ArrowRight, Bike, Clock3, Heart, Loader2, MapPin, Moon, Plus, Star } from 'lucide-react'
-import { type StoreHours, useStoreHours } from '@/lib/store'
+import { ArrowRight, Bike, Clock3, Heart, Loader2, MapPin, Moon, Plus, Star, Store } from 'lucide-react'
+import { type StoreHours, storeHours, useStoreHours } from '@/lib/store'
 import { FoodMap } from '@/components/map'
 import { FoodDetailSheet, RatingBadge } from '@/components/reviews'
 import { useApp } from '@/components/app-provider'
@@ -39,6 +39,11 @@ export function FoodCard({ food }: { food: Food }) {
       </div>
       <div className="p-4">
         <button type="button" onClick={() => setShowDetail(true)} className="block w-full text-left hover:text-[#ff5b35]"><h3 className="truncate font-bold">{food.name}</h3></button>
+        {food.restaurants && (
+          <Link href={`/restaurant/${food.restaurants.id}`} className="mt-0.5 flex items-center gap-1 truncate text-xs font-semibold text-[#746b67] hover:text-[#ff5b35]">
+            <Store className="size-3 shrink-0" /><span className="truncate">{food.restaurants.name}</span>
+          </Link>
+        )}
         <div className="mt-1"><RatingBadge rating={food.rating} count={food.review_count ?? 0} onClick={() => setShowDetail(true)} /></div>
         {food.description && <p className="mt-1 line-clamp-2 text-xs text-[#9c918c]">{food.description}</p>}
         <div className="mt-4 flex items-center justify-between">
@@ -58,7 +63,45 @@ export function FoodCard({ food }: { food: Food }) {
   )
 }
 
-/** The shop's info card (FoodGo serves a single shop) with an expandable location map. */
+/** Square logo, or the restaurant's initial when it has none. */
+export function RestaurantLogo({ r, className = 'size-16 text-2xl' }: { r: Pick<Restaurant, 'name' | 'logo'>; className?: string }) {
+  return r.logo
+    ? <img src={r.logo} alt="" className={`shrink-0 rounded-2xl border-4 border-white object-cover shadow-sm ${className}`} />
+    : <span className={`grid shrink-0 place-items-center rounded-2xl border-4 border-white bg-[#ff5b35] font-extrabold text-white shadow-sm ${className}`}>{r.name.trim()[0]?.toUpperCase()}</span>
+}
+
+/** One restaurant in a list: photo, open/closed, rating, distance. */
+export function RestaurantCard({ r }: { r: Restaurant }) {
+  const distance = useDistanceLabel(r)
+  const hours = storeHours(r)
+  return (
+    <Link href={`/restaurant/${r.id}`} className="group block overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+      <div className="relative h-36 overflow-hidden bg-[#f8f3f0]">
+        {r.image && <img src={r.image} alt={r.name} loading="lazy" className={`h-full w-full object-cover transition duration-500 group-hover:scale-105 ${hours.open ? '' : 'grayscale-[60%]'}`} />}
+        <span className={`absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-bold ${hours.open ? 'bg-white/95 text-[#2f7d4f]' : 'bg-[#241c19]/80 text-white'}`}>
+          {hours.open ? 'Đang mở cửa' : hours.paused ? 'Tạm đóng cửa' : hours.reopens ? `Mở lúc ${hours.reopens}` : 'Đã đóng cửa'}
+        </span>
+        {r.tag && <span className="absolute right-3 top-3 rounded-full bg-[#fff7df] px-3 py-1 text-xs font-bold text-[#bd8300]">{r.tag}</span>}
+      </div>
+      <div className="flex gap-3 p-4">
+        <RestaurantLogo r={r} className="-mt-10 size-14 text-xl" />
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate font-bold group-hover:text-[#ff5b35]">{r.name}</h3>
+          {r.cuisine && <p className="truncate text-xs text-[#746b67]">{r.cuisine}</p>}
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#746b67]">
+            {r.review_count > 0
+              ? <span><Star className="mr-1 inline size-3 fill-[#ffb21c] text-[#ffb21c]" />{Number(r.rating).toFixed(1)} ({formatCount(r.review_count)})</span>
+              : <span className="text-[#9c918c]">Chưa có đánh giá</span>}
+            <span><Bike className="mr-1 inline size-3" />{r.delivery_time}</span>
+            <span><MapPin className="mr-1 inline size-3" />{distance}</span>
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+/** A restaurant's header card with an expandable location map. */
 export function StoreCard({ store }: { store: Restaurant }) {
   const distance = useDistanceLabel(store)
   const { place } = useLocation()
@@ -72,7 +115,7 @@ export function StoreCard({ store }: { store: Restaurant }) {
       </div>
       <div className="relative mx-5 -mt-12 rounded-2xl bg-white p-5 shadow-sm lg:mx-0">
         <div className="flex gap-4">
-          <span className="grid size-16 shrink-0 place-items-center rounded-2xl border-4 border-white bg-[#ff5b35] text-2xl font-extrabold text-white shadow-sm">F</span>
+          <RestaurantLogo r={store} />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-extrabold">{store.name}</h1>
@@ -97,7 +140,7 @@ export function StoreCard({ store }: { store: Restaurant }) {
         {hasCoords(store) && (
           <>
             <button onClick={() => setShowMap(s => !s)} className="mt-4 flex w-full items-center justify-between rounded-xl bg-[#f8f3f0] px-4 py-3 text-sm font-bold">
-              <span className="flex items-center gap-2"><MapPin className="size-4 text-[#ff5b35]" />Xem vị trí quán trên bản đồ</span>
+              <span className="flex items-center gap-2"><MapPin className="size-4 text-[#ff5b35]" />Xem vị trí nhà hàng trên bản đồ</span>
               <span className="text-[#ff5b35]">{showMap ? 'Thu gọn' : 'Mở'}</span>
             </button>
             {showMap && (
@@ -123,7 +166,7 @@ export function ClosedNotice({ hours, className = '' }: { hours: StoreHours; cla
     <div className={`flex items-start gap-3 rounded-xl bg-[#fff7df] px-4 py-3 text-sm text-[#8a6100] ${className}`}>
       <Moon className="mt-0.5 size-4 shrink-0" />
       <p>
-        <b>{hours.paused ? 'Quán đang tạm đóng cửa.' : 'Quán đã đóng cửa.'}</b>{' '}
+        <b>{hours.paused ? 'Nhà hàng đang tạm đóng cửa.' : 'Nhà hàng đã đóng cửa.'}</b>{' '}
         {hours.reopens ? `Mở lại lúc ${hours.reopens}. Bạn vẫn có thể xem thực đơn và chọn món trước.` : 'Vui lòng quay lại sau nhé.'}
       </p>
     </div>
@@ -159,7 +202,8 @@ export function Panel({ title, action, children }: { title: string; action?: Rea
   )
 }
 
-export const FOOD_SELECT = '*'
+// !inner: dishes of hidden (inactive) restaurants drop out, since RLS hides the restaurant row
+export const FOOD_SELECT = '*, restaurants:fg_restaurants!inner(id, name, delivery_time, distance_km, lat, lng, is_open, open_time, close_time)'
 
 /** Real distance from the customer's detected location, falling back to the stored estimate. */
 export function useDistanceLabel(r: { distance_km: number; lat: number | null; lng: number | null } | null | undefined) {

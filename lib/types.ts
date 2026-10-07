@@ -20,6 +20,23 @@ export type Restaurant = {
   close_time: string | null
   /** manual "tạm đóng cửa" switch */
   is_open: boolean
+  /** null = run by the admin (always live); otherwise visible only while paid_until is in the future */
+  owner_id: string | null
+  paid_until: string | null
+  phone: string | null
+}
+
+export type SubscriptionPayment = {
+  id: number
+  code: string
+  restaurant_id: number
+  owner_id: string | null
+  months: number
+  amount: number
+  status: 'pending' | 'paid' | 'cancelled'
+  method: 'qr' | 'admin'
+  paid_at: string | null
+  created_at: string
 }
 
 export type Voucher = {
@@ -28,6 +45,8 @@ export type Voucher = {
   description: string | null
   discount_type: 'percent' | 'amount' | 'freeship'
   discount_value: number
+  /** null = platform-wide (admin); otherwise only for that restaurant */
+  restaurant_id: number | null
   max_discount: number | null
   min_subtotal: number
   usage_limit: number | null
@@ -39,6 +58,8 @@ export type Voucher = {
 
 /** fg_check_voucher() result */
 export type VoucherQuote = { code: string; description: string | null; type: Voucher['discount_type']; discount: number }
+
+export type FoodRestaurant = Pick<Restaurant, 'id' | 'name' | 'delivery_time' | 'distance_km' | 'lat' | 'lng' | 'is_open' | 'open_time' | 'close_time'>
 
 export type Food = {
   id: number
@@ -54,7 +75,8 @@ export type Food = {
   sold_count: number
   is_available: boolean
   is_popular: boolean
-  restaurants?: Pick<Restaurant, 'id' | 'name' | 'delivery_time' | 'distance_km' | 'lat' | 'lng'> | null
+  /** joined via FOOD_SELECT */
+  restaurants?: FoodRestaurant | null
 }
 
 export type Profile = {
@@ -123,7 +145,7 @@ export type Review = {
   updated_at: string
 }
 
-export type Notification ={ id: number; order_id: number | null; title: string; body: string | null; is_read: boolean; created_at: string }
+export type Notification = { id: number; order_id: number | null; title: string; body: string | null; is_read: boolean; created_at: string; link: string | null }
 
 export type CartItem = {
   food_id: number
