@@ -7,6 +7,8 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import type { Category, Food } from '@/lib/types'
 import { storeHours, useRestaurants } from '@/lib/store'
 import { useLocation } from '@/components/location-provider'
+import { useApp } from '@/components/app-provider'
+import { useRecommendations } from '@/lib/recommend'
 import { distanceKm, hasCoords } from '@/lib/geo'
 import { CardSkeleton, FOOD_SELECT, FoodCard, RestaurantCard, SectionTitle } from '@/components/cards'
 
@@ -17,6 +19,8 @@ export default function HomePage() {
   const { place } = useLocation()
   const [categories, setCategories] = useState<Category[] | null>(null)
   const [foods, setFoods] = useState<Food[] | null>(null)
+  const { user, authLoading } = useApp()
+  const picks = useRecommendations(user?.id, !authLoading, 6)
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setCategories([]); setFoods([]); return }
@@ -60,6 +64,15 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {picks?.length !== 0 && (
+        <section className="mt-12">
+          <SectionTitle title={user ? 'Gợi ý cho bạn' : 'Có thể bạn sẽ thích'} />
+          <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {picks === null ? <CardSkeleton count={3} /> : picks.map(p => <FoodCard key={p.food.id} food={p.food} reason={p.reason} />)}
+          </div>
+        </section>
+      )}
 
       <section className="mt-12">
         <SectionTitle title={place ? 'Nhà hàng gần bạn' : 'Nhà hàng'} href="/menu" />

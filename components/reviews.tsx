@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import { Heart, Loader2, MessageSquareText, Minus, Plus, Star, Store, X } from 'lucide-react'
+import { Heart, Loader2, MessageSquareText, Minus, Plus, Sparkles, Star, Store, X } from 'lucide-react'
+import { track, useSimilarFoods } from '@/lib/recommend'
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
@@ -37,11 +38,24 @@ export function Stars({ value, onChange, size = 'size-7' }: { value: number; onC
 const LABELS = ['', 'Rất tệ', 'Chưa ngon', 'Bình thường', 'Ngon', 'Tuyệt vời']
 
 /** Dish detail sheet (opened from the menu / food cards): photo, info, add to cart and customer reviews. */
-export function FoodDetailSheet({ food, onClose }: { food: Food; onClose: () => void }) {
-  const { cart, setQty, addToCart, favoriteIds, toggleFavorite } = useApp()
+export function FoodDetailSheet({ food: initial, onClose }: { food: Food; onClose: () => void }) {
+  const { cart, setQty, addToCart, favoriteIds, toggleFavorite, user } = useApp()
+  // a "Có thể bạn cũng thích" dish opens in place
+  const [food, setFood] = useState(initial)
+  const scroller = useRef<HTMLDivElement>(null)
+  const similar = useSimilarFoods(food.id)
   const [reviews, setReviews] = useState<Review[] | null>(null)
   const inCart = cart.find(x => x.food_id === food.id)
   const liked = favoriteIds.includes(food.id)
+  const signedIn = !!user
+
+  useEffect(() => { track('view', food.id, signedIn) }, [food.id, signedIn])
+
+  const open = (f: Food) => {
+    setFood(f)
+    setReviews(null)
+    scroller.current?.scrollTo({ top: 0 })
+  }
 
   useEffect(() => {
     supabase.from('fg_reviews').select('*').eq('food_id', food.id).order('created_at', { ascending: false }).limit(50)
@@ -60,7 +74,7 @@ export function FoodDetailSheet({ food, onClose }: { food: Food; onClose: () => 
       <div role="dialog" aria-label={food.name} onClick={e => e.stopPropagation()}
         className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white sm:rounded-3xl">
         <button aria-label="Đóng" onClick={onClose} className="absolute right-4 top-4 z-10 grid size-10 place-items-center rounded-full bg-white/90 shadow-sm"><X /></button>
-        <div className="flex-1 overflow-y-auto">
+        <div ref={scroller} className="flex-1 overflow-y-auto">
           {food.image
             ? <img src={food.image} alt={food.name} className={`h-60 w-full object-cover sm:h-72 ${food.is_available ? '' : 'grayscale'}`} />
             : <div className="h-16" />}
@@ -84,6 +98,24 @@ export function FoodDetailSheet({ food, onClose }: { food: Food; onClose: () => 
               <b className="text-2xl text-[#ff5b35]">{money(food.price)}</b>
               {food.old_price && food.old_price > food.price && <del className="ml-2 text-sm text-[#aaa09b]">{money(food.old_price)}</del>}
             </div>
+
+            {!!similar?.length && (
+              <>
+                <h3 className="mt-6 flex items-center gap-1.5 border-t border-[#f1e7e2] pt-5 font-extrabold"><Sparkles className="size-4 text-[#ff5b35]" />Có thể bạn cũng thích</h3>
+                <div className="-mx-5 mt-3 flex gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {similar.map(({ food: f, reason }) => (
+                    <button key={f.id} type="button" onClick={() => open(f)} title={reason} className="w-32 shrink-0 text-left">
+                      <span className="block size-32 overflow-hidden rounded-xl bg-[#f8f3f0]">
+                        {f.image && <img src={f.image} alt={f.name} loading="lazy" className="h-full w-full object-cover" />}
+                      </span>
+                      <span className="mt-1.5 block truncate text-sm font-bold">{f.name}</span>
+                      <span className="block truncate text-xs text-[#9c918c]">{f.restaurants?.name}</span>
+                      <b className="text-sm text-[#ff5b35]">{money(f.price)}</b>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <h3 className="mt-6 border-t border-[#f1e7e2] pt-5 font-extrabold">Đánh giá từ khách hàng</h3>
             <div className="mt-4">

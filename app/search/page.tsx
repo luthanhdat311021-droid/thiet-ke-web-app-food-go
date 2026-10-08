@@ -6,6 +6,8 @@ import { SearchX } from 'lucide-react'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import type { Category, Food } from '@/lib/types'
 import { useRestaurants } from '@/lib/store'
+import { track } from '@/lib/recommend'
+import { useApp } from '@/components/app-provider'
 import { CardSkeleton, EmptyState, FoodCard, FOOD_SELECT, RestaurantCard, Spinner } from '@/components/cards'
 
 const SORTS = [
@@ -40,6 +42,12 @@ function SearchContent() {
     if (!isSupabaseConfigured) return
     supabase.from('fg_categories').select('*').order('sort').then(({ data }) => setCategories((data ?? []) as Category[]))
   }, [])
+
+  const { user, authLoading } = useApp()
+  const signedIn = !!user
+  useEffect(() => {
+    if (q.trim() && !authLoading) track('search', q, signedIn)
+  }, [q, authLoading, signedIn])
 
   useEffect(() => {
     if (!isSupabaseConfigured) { setFoods([]); return }

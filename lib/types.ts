@@ -79,6 +79,9 @@ export type Food = {
   restaurants?: FoodRestaurant | null
 }
 
+/** A dish suggested by fg_recommend_foods() / fg_similar_foods(), with the reason shown to the customer. */
+export type Recommendation = { food: Food; reason: string }
+
 export type Profile = {
   id: string
   full_name: string | null

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { ArrowRight, Bike, Clock3, Heart, Loader2, MapPin, Moon, Plus, Star, Store } from 'lucide-react'
+import { ArrowRight, Bike, Clock3, Heart, Loader2, MapPin, Moon, Plus, Sparkles, Star, Store } from 'lucide-react'
 import { type StoreHours, storeHours, useStoreHours } from '@/lib/store'
 import { FoodMap } from '@/components/map'
 import { FoodDetailSheet, RatingBadge } from '@/components/reviews'
@@ -21,7 +21,8 @@ export function SectionTitle({ title, href, action = 'Xem tất cả' }: { title
   )
 }
 
-export function FoodCard({ food }: { food: Food }) {
+/** `reason`: why the recommender suggested this dish ("Vì bạn quan tâm Phở bò"). */
+export function FoodCard({ food, reason }: { food: Food; reason?: string }) {
   const { addToCart, favoriteIds, toggleFavorite } = useApp()
   const liked = favoriteIds.includes(food.id)
   const [showDetail, setShowDetail] = useState(false)
@@ -38,6 +39,7 @@ export function FoodCard({ food }: { food: Food }) {
         </button>
       </div>
       <div className="p-4">
+        {reason && <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-[#ff5b35]"><Sparkles className="size-3 shrink-0" /><span className="truncate">{reason}</span></p>}
         <button type="button" onClick={() => setShowDetail(true)} className="block w-full text-left hover:text-[#ff5b35]"><h3 className="truncate font-bold">{food.name}</h3></button>
         {food.restaurants && (
           <Link href={`/restaurant/${food.restaurants.id}`} className="mt-0.5 flex items-center gap-1 truncate text-xs font-semibold text-[#746b67] hover:text-[#ff5b35]">
@@ -203,8 +205,7 @@ export function Panel({ title, action, children }: { title: string; action?: Rea
   )
 }
 
-// !inner: dishes of hidden (inactive) restaurants drop out, since RLS hides the restaurant row
-export const FOOD_SELECT = '*, restaurants:fg_restaurants!inner(id, name, delivery_time, distance_km, lat, lng, is_open, open_time, close_time)'
+export { FOOD_SELECT } from '@/lib/store'
 
 /** Real distance from the customer's detected location, falling back to the stored estimate. */
 export function useDistanceLabel(r: { distance_km: number; lat: number | null; lng: number | null } | null | undefined) {

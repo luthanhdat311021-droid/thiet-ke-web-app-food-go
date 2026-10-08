@@ -6,6 +6,7 @@ import type { User } from '@supabase/supabase-js'
 import { Check, X } from 'lucide-react'
 import { isSupabaseConfigured, supabase, errorMessage } from '@/lib/supabase'
 import type { CartItem, Food, Notification, Profile } from '@/lib/types'
+import { track } from '@/lib/recommend'
 
 type AppContextValue = {
   user: User | null
@@ -104,7 +105,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         : [...same, item]
     })
     toast(`Đã thêm ${food.name} vào giỏ`)
-  }, [cart, toast])
+    track('cart', food.id, !!uid)
+  }, [cart, toast, uid])
 
   const replaceCart = useCallback((items: CartItem[]) => {
     if (cart.length && !window.confirm('Thay giỏ hàng hiện tại bằng các món trong đơn này?')) return false

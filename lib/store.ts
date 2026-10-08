@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { isSupabaseConfigured, supabase } from '@/lib/supabase'
 import type { Restaurant } from '@/lib/types'
 
+// !inner: dishes of hidden (inactive) restaurants drop out, since RLS hides the restaurant row
+export const FOOD_SELECT = '*, restaurants:fg_restaurants!inner(id, name, delivery_time, distance_km, lat, lng, is_open, open_time, close_time)'
+
 // Restaurants change rarely: one shared list per page load (RLS hides inactive ones from customers).
 let cache: Promise<Restaurant[]> | null = null
 
