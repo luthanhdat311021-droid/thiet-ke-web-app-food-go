@@ -46,6 +46,10 @@ export function useApp() {
 
 const CART_KEY = 'foodgo-cart'
 
+function readCart(key: string): CartItem[] {
+  try { return JSON.parse(localStorage.getItem(key) ?? '[]') } catch { return [] }
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -64,16 +68,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     toastTimer.current = setTimeout(() => setToastState(null), 2600)
   }, [])
 
-  // ---------- cart (localStorage) ----------
+  // ---------- cart (localStorage, one per account + one for guests) ----------
+  // signing out shows the (empty) guest cart; the account's cart comes back when it signs in again
+  const uid = user?.id
+  const [cartKey, setCartKey] = useState<string | null>(null)
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(CART_KEY)
-      if (saved) setCart(JSON.parse(saved))
-    } catch {}
-  }, [])
+    if (authLoading) return
+    const key = uid ? `${CART_KEY}:${uid}` : CART_KEY
+    let items = readCart(key)
+    if (uid) {
+      // dishes added before signing in carry over to an empty account cart
+      const guest = readCart(CART_KEY)
+      if (!items.length && guest.length) items = guest
+      try { localStorage.removeItem(CART_KEY) } catch {}
+    }
+    setCart(items)
+    setCartKey(key)
+  }, [authLoading, uid])
   useEffect(() => {
-    try { localStorage.setItem(CART_KEY, JSON.stringify(cart)) } catch {}
-  }, [cart])
+    if (!cartKey) return
+    try { localStorage.setItem(cartKey, JSON.stringify(cart)) } catch {}
+  }, [cart, cartKey])
 
   // one order = one restaurant (fg_place_order enforces it): switching restaurants starts a new cart
   const addToCart = useCallback((food: Food, qty = 1) => {
