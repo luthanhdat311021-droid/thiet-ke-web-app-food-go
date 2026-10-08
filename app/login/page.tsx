@@ -14,8 +14,8 @@ import { errorMessage, isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { isNativeApp, NATIVE_AUTH_CALLBACK } from '@/lib/native'
 import { Browser } from '@capacitor/browser'
 
-// forgot: enter email to receive a 6-digit code · reset: enter that code + the new password
-type Mode = 'signin' | 'signup' | 'forgot' | 'reset'
+// forgot: enter email to receive a 6-digit code · verify: check that code · reset: choose the new password
+type Mode = 'signin' | 'signup' | 'forgot' | 'verify' | 'reset'
 
 export default function LoginPage() {
   return <Suspense fallback={<Spinner />}><LoginForm /></Suspense>
@@ -34,12 +34,10 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [otp, setOtp] = useState('')
-  // verifyOtp signs the user in and burns the code, so a failed updateUser must not re-verify
-  const otpVerified = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
-  const recovering = mode === 'forgot' || mode === 'reset'
+  const recovering = mode === 'forgot' || mode === 'verify' || mode === 'reset'
   const [captcha, setCaptcha] = useState<string | null>(null)
   const turnstile = useRef<TurnstileHandle>(null)
 
@@ -47,7 +45,7 @@ function LoginForm() {
   const adminOnly = next.startsWith('/admin')
   useEffect(() => {
     // verifying the reset code signs the user in; stay here until the new password is saved
-    if (authLoading || !user || mode === 'reset') return
+    if (authLoading || !user || mode === 'verify' || mode === 'reset') return
     if (!adminOnly) return router.replace(next)
     if (profile) router.replace(profile.role === 'admin' ? next : '/')
   }, [authLoading, user, profile, adminOnly, router, next, mode])
@@ -87,20 +85,20 @@ function LoginForm() {
       } else if (mode === 'forgot') {
         const { error } = await sendResetCode(email, captchaToken)
         if (error) throw error
-        otpVerified.current = false
         setOtp(''); setPassword(''); setConfirm('')
-        setMode('reset')
+        setMode('verify')
         setInfo(`Đã gửi mã xác nhận 6 số tới ${email}. Vui lòng kiểm tra hộp thư (cả mục Spam).`)
-      } else {
+      } else if (mode === 'verify') {
         if (!/^\d{6}$/.test(otp)) throw new Error('Mã xác nhận gồm 6 chữ số')
+        // a correct code signs the user in with a recovery session, which is what lets updateUser set the password
+        const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'recovery', options: { captchaToken } })
+        if (error) throw error
+        setMode('reset')
+        setInfo('Mã xác nhận hợp lệ. Hãy đặt mật khẩu mới.')
+      } else {
         if (password !== confirm) throw new Error('Mật khẩu nhập lại không khớp')
         const problem = await validateNewPassword(password)
         if (problem) throw new Error(problem)
-        if (!otpVerified.current) {
-          const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'recovery', options: { captchaToken } })
-          if (error) throw error
-          otpVerified.current = true
-        }
         const { error } = await supabase.auth.updateUser({ password })
         if (error) throw error
         toast('Đã đặt mật khẩu mới')
@@ -121,7 +119,6 @@ function LoginForm() {
     setBusy(false)
     turnstile.current?.reset()
     if (error) return setError(translate(error.message))
-    otpVerified.current = false
     setOtp('')
     setInfo('Đã gửi lại mã xác nhận mới. Mã cũ không còn dùng được.')
   }
@@ -147,10 +144,11 @@ function LoginForm() {
   return (
     <main className="mx-auto max-w-md px-5 pb-24 pt-10">
       <div className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
-        <h1 className="text-2xl font-extrabold">{mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Tạo tài khoản' : mode === 'forgot' ? 'Quên mật khẩu' : 'Đặt lại mật khẩu'}</h1>
+        <h1 className="text-2xl font-extrabold">{mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Tạo tài khoản' : mode === 'forgot' ? 'Quên mật khẩu' : mode === 'verify' ? 'Nhập mã xác nhận' : 'Đặt lại mật khẩu'}</h1>
         <p className="mt-2 text-sm text-[#746b67]">
           {mode === 'forgot' ? 'Nhập email, chúng tôi sẽ gửi mã xác nhận 6 số để đặt lại mật khẩu.'
-            : mode === 'reset' ? 'Nhập mã 6 số trong email và mật khẩu mới.'
+            : mode === 'verify' ? 'Nhập mã 6 số trong email để xác nhận đây là bạn.'
+            : mode === 'reset' ? 'Nhập mật khẩu mới cho tài khoản của bạn.'
             : 'Đặt món nhanh hơn, theo dõi đơn hàng và lưu món yêu thích.'}
         </p>
 
@@ -165,21 +163,21 @@ function LoginForm() {
 
         <form onSubmit={submit} className={`flex flex-col gap-4 ${recovering ? 'mt-6' : ''}`}>
           {mode === 'signup' && <Field label="Họ và tên" value={name} onChange={setName} required autoComplete="name" />}
-          {mode === 'reset' ? (
+          {mode === 'verify' || mode === 'reset' ? (
             <p className="text-sm text-[#746b67]">
               Email: <b className="text-[#241c19]">{emailInput}</b>{' '}
-              <button type="button" onClick={() => { setMode('forgot'); setError(''); setInfo('') }} className="py-2 font-semibold text-[#ff5b35]">Đổi email</button>
+              {mode === 'verify' && <button type="button" onClick={() => { setMode('forgot'); setError(''); setInfo('') }} className="py-2 font-semibold text-[#ff5b35]">Đổi email</button>}
             </p>
           ) : (
             <Field label="Email" type="email" value={emailInput} onChange={v => setEmail(v.replace(/\s/g, ''))} required maxLength={254} placeholder="ten@gmail.com" autoComplete="email" />
           )}
-          {mode === 'reset' && (
+          {mode === 'verify' && (
             <>
               <Field label="Mã xác nhận" value={otp} onChange={v => setOtp(v.replace(/\D/g, '').slice(0, 6))} required inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" />
               <button type="button" onClick={resendCode} disabled={busy} className="-mt-2 self-end py-2 text-sm font-semibold text-[#ff5b35] disabled:opacity-50">Gửi lại mã</button>
             </>
           )}
-          {mode !== 'forgot' && <Field label={mode === 'reset' ? 'Mật khẩu mới' : 'Mật khẩu'} type="password" value={password} onChange={setPassword} required autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />}
+          {mode !== 'forgot' && mode !== 'verify' && <Field label={mode === 'reset' ? 'Mật khẩu mới' : 'Mật khẩu'} type="password" value={password} onChange={setPassword} required autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />}
           {mode === 'reset' && <Field label="Nhập lại mật khẩu mới" type="password" value={confirm} onChange={setConfirm} required autoComplete="new-password" />}
           {mode === 'signin' && <button type="button" onClick={() => { setMode('forgot'); setError(''); setInfo('') }} className="-mt-2 self-end py-2 text-sm font-semibold text-[#ff5b35]">Quên mật khẩu?</button>}
           {(mode === 'signup' || mode === 'reset') && <p className="-mt-2 text-xs text-[#9c918c]">Ít nhất 8 ký tự, gồm cả chữ và số.</p>}
@@ -188,16 +186,17 @@ function LoginForm() {
           {info && <p className="rounded-xl bg-[#e4f8eb] px-4 py-3 text-sm text-[#2f7d4f]">{info}</p>}
           <Button type="submit" disabled={busy} className="h-12 rounded-xl bg-[#ff5b35] text-base hover:bg-[#e94c29]">
             {busy && <Loader2 className="animate-spin" />}
-            {mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Đăng ký' : mode === 'forgot' ? 'Gửi mã xác nhận' : 'Đổi mật khẩu'}
+            {mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Đăng ký' : mode === 'forgot' ? 'Gửi mã xác nhận' : mode === 'verify' ? 'Xác nhận mã' : 'Đổi mật khẩu'}
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-[#746b67]">
+        {/* the code is already used up once verified, so finish here rather than leaving mid-reset */}
+        {mode !== 'reset' && <p className="mt-6 text-center text-sm text-[#746b67]">
           {mode === 'signin' ? 'Chưa có tài khoản?' : 'Đã có tài khoản?'}{' '}
           <button onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); setInfo('') }} className="py-2 font-bold text-[#ff5b35]">
             {mode === 'signin' ? 'Đăng ký ngay' : 'Đăng nhập'}
           </button>
-        </p>
+        </p>}
       </div>
     </main>
   )
