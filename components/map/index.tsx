@@ -8,4 +8,9 @@ export const FoodMap = dynamic(() => import('./leaflet-map'), {
   loading: () => <div className="h-72 w-full animate-pulse bg-[#e8efe9]" />,
 })
 
+export const LocateMap = dynamic(() => import('./locate-map'), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse bg-[#e8efe9]" />,
+})
+
 export type { MapMarker } from './leaflet-map'

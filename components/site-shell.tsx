@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
 import { useLocation } from '@/components/location-provider'
+import { LocationPicker } from '@/components/location-picker'
 import { ROUGH_ACCURACY_M } from '@/lib/geo'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { money, shippingFee, FREE_SHIP_FROM, timeAgo } from '@/lib/format'
@@ -24,6 +25,7 @@ export function SiteShell({ children }: { children: React.ReactNode }) {
       {children}
       <BottomNav />
       <CartDrawer />
+      <LocationPicker />
     </div>
   )
 }
@@ -69,9 +71,9 @@ function SearchBox() {
   )
 }
 
-/** "Giao đến …" – the customer's detected address; tap to (re)locate. */
+/** "Giao đến …" – the customer's detected address; tap to open the map and locate / move the pin. */
 function LocationChip() {
-  const { place, status, error, locate } = useLocation()
+  const { place, status, error, setPickerOpen } = useLocation()
   const rough = status === 'ready' && (place?.accuracy ?? 0) > ROUGH_ACCURACY_M
   const text = status === 'locating' ? 'Đang xác định vị trí...'
     : place ? place.address
@@ -79,14 +81,14 @@ function LocationChip() {
     : 'Chọn vị trí giao hàng'
   return (
     <button
-      onClick={() => locate()}
-      title={place?.address ?? 'Lấy vị trí hiện tại'}
+      onClick={() => setPickerOpen(true)}
+      title={place?.address ?? 'Chọn vị trí giao hàng'}
       className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm hover:bg-[#fff5f1] sm:max-w-[240px] sm:flex-none xl:max-w-xs"
     >
       {status === 'locating' ? <Loader2 className="size-4 shrink-0 animate-spin text-[#ff5b35]" /> : <MapPin className="size-4 shrink-0 text-[#ff5b35]" />}
       <span className="min-w-0">
         <span className="block text-[11px] leading-tight text-[#9c918c]">
-          Giao đến{rough && <span className="text-[#c2410c]"> • vị trí ước tính, bấm để thử lại</span>}
+          Giao đến{rough && <span className="text-[#c2410c]"> • vị trí ước tính, bấm để chỉnh</span>}
         </span>
         <b className={`block truncate leading-tight ${status === 'error' ? 'font-semibold text-[#c2410c]' : 'text-[#241c19]'}`}>{text}</b>
       </span>

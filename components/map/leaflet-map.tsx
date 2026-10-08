@@ -29,8 +29,9 @@ const PICK_ICON = L.divIcon({
 
 // Esri World Street Map: no API key, Vietnamese street labels; attribution is required.
 // (CARTO basemaps now demand an API key, and tile.openstreetmap.org rejects many app/WebView requests.)
-const TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
-const ATTRIBUTION = 'Tiles &copy; <a href="https://www.esri.com">Esri</a> — Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
+export const TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+export const ATTRIBUTION = 'Tiles &copy; <a href="https://www.esri.com">Esri</a> — Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
+export const DEFAULT_CENTER: [number, number] = [10.9806, 106.6744] // Trường ĐH Thủ Dầu Một
 
 function FitBounds({ points, padding }: { points: [number, number][]; padding: number }) {
   const map = useMap()
@@ -63,7 +64,7 @@ export default function LeafletMap({ markers = [], route, picker, onPick, fitPoi
     () => fitPoints ?? [...markers.map(m => m.pos), ...(picker ? [[picker.lat, picker.lng] as [number, number]] : [])],
     [fitPoints, markers, picker],
   )
-  const center = fit[0] ?? [10.9806, 106.6744] // Trường ĐH Thủ Dầu Một
+  const center = fit[0] ?? DEFAULT_CENTER
 
   return (
     <MapContainer center={center} zoom={15} scrollWheelZoom={false} className={`z-0 w-full ${className}`} attributionControl>

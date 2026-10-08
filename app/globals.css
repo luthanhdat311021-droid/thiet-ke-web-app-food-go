@@ -184,3 +184,39 @@ header.sticky {
 nav.fixed.bottom-0 {
   padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
+
+/* "định vị" screen after sign-in (components/location-picker.tsx) */
+@keyframes fg-pin-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+@keyframes fg-pin-drop {
+  0% { transform: translateY(-70px); opacity: 0; }
+  55% { transform: translateY(0); opacity: 1; }
+  72% { transform: translateY(-12px); }
+  86% { transform: translateY(0); }
+  94% { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+@keyframes fg-radar {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.55; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+@keyframes fg-sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+@keyframes fg-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+/* the bottom sheet overlaps the map by 24px: keep the map credits visible */
+.fg-locate .leaflet-bottom { bottom: 24px; }
+.fg-pin-bob { animation: fg-pin-bob 0.9s ease-in-out infinite; }
+.fg-pin-drop { animation: fg-pin-drop 0.75s cubic-bezier(0.3, 0.7, 0.4, 1) both; }
+.fg-radar { animation: fg-radar 1.8s ease-out infinite; }
+.fg-sheet-up { animation: fg-sheet-up 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.fg-fade-in { animation: fg-fade-in 0.3s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .fg-pin-bob, .fg-pin-drop, .fg-radar, .fg-sheet-up, .fg-fade-in { animation: none; }
+}
