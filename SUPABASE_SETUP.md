@@ -33,6 +33,10 @@
 
 **Email + mật khẩu** đã được bật sẵn. Mặc định Supabase yêu cầu xác nhận email. Nếu muốn tắt khi thử nghiệm, vào **Authentication → Sign In / Providers → Email** và tắt *Confirm email*.
 
+**Quên mật khẩu (mã OTP 6 số)**: app gửi mã 6 số qua email, khách nhập mã và mật khẩu mới ngay trong app.
+- Vào **Authentication → Email Templates → Reset password**, dán nội dung file `supabase/email-templates/reset-password.html` (mẫu dùng `{{ .Token }}` thay cho liên kết).
+- Ở **Authentication → Sign In / Providers → Email**, giữ *Email OTP Length* = `6` (*Email OTP Expiration* mặc định 3600 giây = 1 giờ).
+
 **Google**
 1. Vào https://console.cloud.google.com, chọn **APIs & Services → Credentials → Create credentials → OAuth client ID** (loại *Web application*).
 2. Ở mục **Authorized redirect URIs**, thêm: `https://<project-ref>.supabase.co/auth/v1/callback`. Bạn có thể sao chép URL này trong Supabase, ở mục Google provider.

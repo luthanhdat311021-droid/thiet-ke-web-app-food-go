@@ -14,7 +14,8 @@ import { errorMessage, isSupabaseConfigured, supabase } from '@/lib/supabase'
 import { isNativeApp, NATIVE_AUTH_CALLBACK } from '@/lib/native'
 import { Browser } from '@capacitor/browser'
 
-type Mode = 'signin' | 'signup' | 'forgot'
+// forgot: enter email to receive a 6-digit code · reset: enter that code + the new password
+type Mode = 'signin' | 'signup' | 'forgot' | 'reset'
 
 export default function LoginPage() {
   return <Suspense fallback={<Spinner />}><LoginForm /></Suspense>
@@ -31,19 +32,28 @@ function LoginForm() {
   const [name, setName] = useState('')
   const [emailInput, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [otp, setOtp] = useState('')
+  // verifyOtp signs the user in and burns the code, so a failed updateUser must not re-verify
+  const otpVerified = useRef(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
+  const recovering = mode === 'forgot' || mode === 'reset'
   const [captcha, setCaptcha] = useState<string | null>(null)
   const turnstile = useRef<TurnstileHandle>(null)
 
   // /admin is only a sensible destination for admins; anyone else signing in goes home
   const adminOnly = next.startsWith('/admin')
   useEffect(() => {
-    if (authLoading || !user) return
+    // verifying the reset code signs the user in; stay here until the new password is saved
+    if (authLoading || !user || mode === 'reset') return
     if (!adminOnly) return router.replace(next)
     if (profile) router.replace(profile.role === 'admin' ? next : '/')
-  }, [authLoading, user, profile, adminOnly, router, next])
+  }, [authLoading, user, profile, adminOnly, router, next, mode])
+
+  const sendResetCode = (email: string, captchaToken?: string) =>
+    supabase.auth.resetPasswordForEmail(email, { captchaToken })
 
   // OAuth failures come back as ?error_description=... or #error_description=...
   useEffect(() => {
@@ -74,10 +84,27 @@ function LoginForm() {
         })
         if (error) throw error
         if (!data.session) setInfo('Đã gửi email xác nhận. Vui lòng mở hộp thư và bấm vào liên kết để kích hoạt tài khoản.')
-      } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${location.origin}/reset-password`, captchaToken })
+      } else if (mode === 'forgot') {
+        const { error } = await sendResetCode(email, captchaToken)
         if (error) throw error
-        setInfo('Đã gửi email đặt lại mật khẩu. Vui lòng kiểm tra hộp thư.')
+        otpVerified.current = false
+        setOtp(''); setPassword(''); setConfirm('')
+        setMode('reset')
+        setInfo(`Đã gửi mã xác nhận 6 số tới ${email}. Vui lòng kiểm tra hộp thư (cả mục Spam).`)
+      } else {
+        if (!/^\d{6}$/.test(otp)) throw new Error('Mã xác nhận gồm 6 chữ số')
+        if (password !== confirm) throw new Error('Mật khẩu nhập lại không khớp')
+        const problem = await validateNewPassword(password)
+        if (problem) throw new Error(problem)
+        if (!otpVerified.current) {
+          const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: 'recovery', options: { captchaToken } })
+          if (error) throw error
+          otpVerified.current = true
+        }
+        const { error } = await supabase.auth.updateUser({ password })
+        if (error) throw error
+        toast('Đã đặt mật khẩu mới')
+        router.replace(next)
       }
     } catch (err) {
       setError(translate(errorMessage(err)))
@@ -85,6 +112,18 @@ function LoginForm() {
       setBusy(false)
       turnstile.current?.reset() // tokens are single-use
     }
+  }
+
+  const resendCode = async () => {
+    if (TURNSTILE_SITE_KEY && !captcha) return setError('Vui lòng chờ xác minh chống robot hoàn tất')
+    setBusy(true); setError(''); setInfo('')
+    const { error } = await sendResetCode(emailInput.trim(), captcha ?? undefined)
+    setBusy(false)
+    turnstile.current?.reset()
+    if (error) return setError(translate(error.message))
+    otpVerified.current = false
+    setOtp('')
+    setInfo('Đã gửi lại mã xác nhận mới. Mã cũ không còn dùng được.')
   }
 
   const google = async () => {
@@ -108,12 +147,14 @@ function LoginForm() {
   return (
     <main className="mx-auto max-w-md px-5 pb-24 pt-10">
       <div className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
-        <h1 className="text-2xl font-extrabold">{mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Tạo tài khoản' : 'Quên mật khẩu'}</h1>
+        <h1 className="text-2xl font-extrabold">{mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Tạo tài khoản' : mode === 'forgot' ? 'Quên mật khẩu' : 'Đặt lại mật khẩu'}</h1>
         <p className="mt-2 text-sm text-[#746b67]">
-          {mode === 'forgot' ? 'Nhập email, chúng tôi sẽ gửi liên kết đặt lại mật khẩu.' : 'Đặt món nhanh hơn, theo dõi đơn hàng và lưu món yêu thích.'}
+          {mode === 'forgot' ? 'Nhập email, chúng tôi sẽ gửi mã xác nhận 6 số để đặt lại mật khẩu.'
+            : mode === 'reset' ? 'Nhập mã 6 số trong email và mật khẩu mới.'
+            : 'Đặt món nhanh hơn, theo dõi đơn hàng và lưu món yêu thích.'}
         </p>
 
-        {mode !== 'forgot' && (
+        {!recovering && (
           <>
             <button onClick={google} className="mt-6 flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-[#eaded8] text-sm font-semibold hover:bg-[#fffaf7]">
               <GoogleIcon /> Tiếp tục với Google
@@ -122,18 +163,32 @@ function LoginForm() {
           </>
         )}
 
-        <form onSubmit={submit} className={`flex flex-col gap-4 ${mode === 'forgot' ? 'mt-6' : ''}`}>
+        <form onSubmit={submit} className={`flex flex-col gap-4 ${recovering ? 'mt-6' : ''}`}>
           {mode === 'signup' && <Field label="Họ và tên" value={name} onChange={setName} required autoComplete="name" />}
-          <Field label="Email" type="email" value={emailInput} onChange={v => setEmail(v.replace(/\s/g, ''))} required maxLength={254} placeholder="ten@gmail.com" autoComplete="email" />
-          {mode !== 'forgot' && <Field label="Mật khẩu" type="password" value={password} onChange={setPassword} required autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />}
-          {mode === 'signin' && <button type="button" onClick={() => setMode('forgot')} className="-mt-2 self-end py-2 text-sm font-semibold text-[#ff5b35]">Quên mật khẩu?</button>}
-          {mode === 'signup' && <p className="-mt-2 text-xs text-[#9c918c]">Ít nhất 8 ký tự, gồm cả chữ và số.</p>}
+          {mode === 'reset' ? (
+            <p className="text-sm text-[#746b67]">
+              Email: <b className="text-[#241c19]">{emailInput}</b>{' '}
+              <button type="button" onClick={() => { setMode('forgot'); setError(''); setInfo('') }} className="py-2 font-semibold text-[#ff5b35]">Đổi email</button>
+            </p>
+          ) : (
+            <Field label="Email" type="email" value={emailInput} onChange={v => setEmail(v.replace(/\s/g, ''))} required maxLength={254} placeholder="ten@gmail.com" autoComplete="email" />
+          )}
+          {mode === 'reset' && (
+            <>
+              <Field label="Mã xác nhận" value={otp} onChange={v => setOtp(v.replace(/\D/g, '').slice(0, 6))} required inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="123456" />
+              <button type="button" onClick={resendCode} disabled={busy} className="-mt-2 self-end py-2 text-sm font-semibold text-[#ff5b35] disabled:opacity-50">Gửi lại mã</button>
+            </>
+          )}
+          {mode !== 'forgot' && <Field label={mode === 'reset' ? 'Mật khẩu mới' : 'Mật khẩu'} type="password" value={password} onChange={setPassword} required autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />}
+          {mode === 'reset' && <Field label="Nhập lại mật khẩu mới" type="password" value={confirm} onChange={setConfirm} required autoComplete="new-password" />}
+          {mode === 'signin' && <button type="button" onClick={() => { setMode('forgot'); setError(''); setInfo('') }} className="-mt-2 self-end py-2 text-sm font-semibold text-[#ff5b35]">Quên mật khẩu?</button>}
+          {(mode === 'signup' || mode === 'reset') && <p className="-mt-2 text-xs text-[#9c918c]">Ít nhất 8 ký tự, gồm cả chữ và số.</p>}
           <Turnstile ref={turnstile} onToken={setCaptcha} />
           {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>}
           {info && <p className="rounded-xl bg-[#e4f8eb] px-4 py-3 text-sm text-[#2f7d4f]">{info}</p>}
           <Button type="submit" disabled={busy} className="h-12 rounded-xl bg-[#ff5b35] text-base hover:bg-[#e94c29]">
             {busy && <Loader2 className="animate-spin" />}
-            {mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Đăng ký' : 'Gửi liên kết'}
+            {mode === 'signin' ? 'Đăng nhập' : mode === 'signup' ? 'Đăng ký' : mode === 'forgot' ? 'Gửi mã xác nhận' : 'Đổi mật khẩu'}
           </Button>
         </form>
 
@@ -155,6 +210,8 @@ function translate(msg: string) {
   if (/provider is not enabled/i.test(msg)) return 'Đăng nhập Google chưa được bật trong Supabase (xem SUPABASE_SETUP.md)'
   if (/rate limit|only request this after/i.test(msg)) return 'Bạn thao tác quá nhanh, vui lòng thử lại sau ít phút'
   if (/captcha/i.test(msg)) return 'Xác minh chống robot thất bại, vui lòng thử lại'
+  if (/token has expired or is invalid|otp.*(expired|invalid)/i.test(msg)) return 'Mã xác nhận không đúng hoặc đã hết hạn'
+  if (/should be different from the old password/i.test(msg)) return 'Mật khẩu mới phải khác mật khẩu cũ'
   if (/error sending (confirmation|recovery|magic link)/i.test(msg)) return 'Không gửi được email tới địa chỉ này. Vui lòng kiểm tra lại email hoặc thử email khác.'
   return msg
 }
