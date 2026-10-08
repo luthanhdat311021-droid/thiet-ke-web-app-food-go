@@ -33,7 +33,7 @@ type Tab = (typeof TABS)[number]['id']
 export default function ShopPage() {
   return (
     <div className="min-h-screen bg-[#fffaf7] text-[#241c19]">
-      <RequireAuth secure><Suspense fallback={<Spinner />}><Shop /></Suspense></RequireAuth>
+      <RequireAuth><Suspense fallback={<Spinner />}><Shop /></Suspense></RequireAuth>
     </div>
   )
 }

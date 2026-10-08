@@ -66,8 +66,9 @@ export function FoodCard({ food }: { food: Food }) {
 /** Square logo, or the restaurant's initial when it has none. */
 export function RestaurantLogo({ r, className = 'size-16 text-2xl' }: { r: Pick<Restaurant, 'name' | 'logo'>; className?: string }) {
   return r.logo
-    ? <img src={r.logo} alt="" className={`shrink-0 rounded-2xl border-4 border-white object-cover shadow-sm ${className}`} />
-    : <span className={`grid shrink-0 place-items-center rounded-2xl border-4 border-white bg-[#ff5b35] font-extrabold text-white shadow-sm ${className}`}>{r.name.trim()[0]?.toUpperCase()}</span>
+    // relative + z-10: the logo overlaps the cover photo (negative margin) and must paint above it
+    ? <img src={r.logo} alt="" className={`relative z-10 shrink-0 rounded-2xl border-4 border-white bg-white object-cover shadow-md ${className}`} />
+    : <span className={`relative z-10 grid shrink-0 place-items-center rounded-2xl border-4 border-white bg-[#ff5b35] font-extrabold text-white shadow-md ${className}`}>{r.name.trim()[0]?.toUpperCase()}</span>
 }
 
 /** One restaurant in a list: photo, open/closed, rating, distance. */

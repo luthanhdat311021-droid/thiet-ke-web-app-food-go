@@ -42,7 +42,8 @@ export default function RestaurantsPage() {
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-0 flex-1 sm:max-w-sm">
+        {/* phones: search gets its own full-width row, the sort / filter share the next one */}
+        <div className="relative w-full min-w-0 sm:w-auto sm:max-w-sm sm:flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#9c918c]" />
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm tên nhà hàng, món chính..." aria-label="Tìm nhà hàng"
             className="h-11 w-full rounded-xl border border-[#eaded8] bg-white pl-9 pr-3 text-sm outline-none focus:border-[#ff5b35]" />

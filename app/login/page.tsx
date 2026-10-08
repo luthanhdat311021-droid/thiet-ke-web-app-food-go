@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { Turnstile, TURNSTILE_SITE_KEY, type TurnstileHandle } from '@/components/turnstile'
 import { validateNewPassword } from '@/lib/password'
+import { EMAIL_ERROR, isValidEmail } from '@/lib/validate'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -28,7 +29,7 @@ function LoginForm() {
   const { user, profile, authLoading, toast } = useApp()
   const [mode, setMode] = useState<Mode>(params.get('mode') === 'forgot' ? 'forgot' : params.get('mode') === 'signup' ? 'signup' : 'signin')
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [emailInput, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -53,8 +54,10 @@ function LoginForm() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isSupabaseConfigured) return setError('Chưa cấu hình Supabase (.env.local).')
+    if (!isValidEmail(emailInput)) return setError(EMAIL_ERROR)
     if (TURNSTILE_SITE_KEY && !captcha) return setError('Vui lòng chờ xác minh chống robot hoàn tất')
     setBusy(true); setError(''); setInfo('')
+    const email = emailInput.trim()
     // undefined when Turnstile isn't configured, so Supabase works with captcha protection off
     const captchaToken = captcha ?? undefined
     try {
@@ -121,7 +124,7 @@ function LoginForm() {
 
         <form onSubmit={submit} className={`flex flex-col gap-4 ${mode === 'forgot' ? 'mt-6' : ''}`}>
           {mode === 'signup' && <Field label="Họ và tên" value={name} onChange={setName} required autoComplete="name" />}
-          <Field label="Email" type="email" value={email} onChange={setEmail} required autoComplete="email" />
+          <Field label="Email" type="email" value={emailInput} onChange={v => setEmail(v.replace(/\s/g, ''))} required maxLength={254} placeholder="ten@gmail.com" autoComplete="email" />
           {mode !== 'forgot' && <Field label="Mật khẩu" type="password" value={password} onChange={setPassword} required autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} />}
           {mode === 'signin' && <button type="button" onClick={() => setMode('forgot')} className="-mt-2 self-end py-2 text-sm font-semibold text-[#ff5b35]">Quên mật khẩu?</button>}
           {mode === 'signup' && <p className="-mt-2 text-xs text-[#9c918c]">Ít nhất 8 ký tự, gồm cả chữ và số.</p>}

@@ -3,24 +3,22 @@
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Heart, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, Package, Pencil, Plus, ShieldCheck, Store, Trash2, User } from 'lucide-react'
+import { Heart, KeyRound, LayoutDashboard, Loader2, LogOut, MapPin, Package, Pencil, Plus, Store, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RequireAuth } from '@/components/require-auth'
 import { EmptyState, FoodCard, FOOD_SELECT, Panel, Spinner } from '@/components/cards'
 import { Field } from '@/components/field'
 import { useApp } from '@/components/app-provider'
 import { validateNewPassword } from '@/lib/password'
-import { MfaSettings } from '@/components/mfa'
 import { errorMessage, supabase } from '@/lib/supabase'
+import { normalizePhone, PHONE_ERROR, phoneInput } from '@/lib/validate'
 import type { Address, Food } from '@/lib/types'
 
 const TABS = [
   { id: 'profile', label: 'Thông tin cá nhân', icon: User },
   { id: 'addresses', label: 'Địa chỉ', icon: MapPin },
   { id: 'favorites', label: 'Món yêu thích', icon: Heart },
-  { id: 'password', label: 'Đổi mật khẩu', icon: KeyRound },
-  { id: 'security', label: 'Bảo mật (2FA)', icon: ShieldCheck },
-] as const
+  { id: 'password', label: 'Đổi mật khẩu', icon: KeyRound },] as const
 type Tab = (typeof TABS)[number]['id']
 
 export default function AccountPage() {
@@ -53,9 +51,7 @@ function Account() {
         {tab === 'profile' && <ProfileTab />}
         {tab === 'addresses' && <AddressesTab />}
         {tab === 'favorites' && <FavoritesTab />}
-        {tab === 'password' && <PasswordTab />}
-        {tab === 'security' && <Panel title="Xác thực 2 lớp (2FA)"><MfaSettings /></Panel>}
-      </div>
+        {tab === 'password' && <PasswordTab />}      </div>
     </main>
   )
 }
@@ -76,8 +72,10 @@ function ProfileTab() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
+    const cleanPhone = phone.trim() ? normalizePhone(phone) : null
+    if (phone.trim() && !cleanPhone) return toast(PHONE_ERROR, 'error')
     setBusy(true)
-    const { error } = await supabase.from('fg_profiles').update({ full_name: fullName.trim(), phone: phone.trim() || null, birthday: birthday || null }).eq('id', user.id)
+    const { error } = await supabase.from('fg_profiles').update({ full_name: fullName.trim(), phone: cleanPhone, birthday: birthday || null }).eq('id', user.id)
     setBusy(false)
     if (error) return toast(errorMessage(error), 'error')
     await refreshProfile()
@@ -96,7 +94,7 @@ function ProfileTab() {
         <div className="grid gap-5 sm:grid-cols-2">
           <Field label="Họ và tên" value={fullName} onChange={setFullName} required />
           <Field label="Email" value={user?.email ?? ''} onChange={() => {}} disabled />
-          <Field label="Số điện thoại" type="tel" value={phone} onChange={setPhone} />
+          <Field label="Số điện thoại" type="tel" inputMode="tel" value={phone} onChange={v => setPhone(phoneInput(v))} placeholder="0912 345 678" autoComplete="tel" />
           <Field label="Ngày sinh" type="date" value={birthday} onChange={setBirthday} />
         </div>
         <Button type="submit" disabled={busy} className="h-11 w-fit rounded-xl bg-[#ff5b35] px-5 hover:bg-[#e94c29]">{busy && <Loader2 className="animate-spin" />}Lưu thay đổi</Button>
@@ -118,8 +116,10 @@ function AddressesTab() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user || !editing) return
+    const phone = normalizePhone(editing.phone ?? '')
+    if (!phone) return toast(PHONE_ERROR, 'error')
     setBusy(true)
-    const row = { label: editing.label || 'Nhà riêng', recipient: editing.recipient ?? '', phone: editing.phone ?? '', address: editing.address ?? '', is_default: Boolean(editing.is_default) || !list?.length }
+    const row = { label: editing.label || 'Nhà riêng', recipient: editing.recipient ?? '', phone, address: editing.address ?? '', is_default: Boolean(editing.is_default) || !list?.length }
     const { error } = editing.id
       ? await supabase.from('fg_addresses').update(row).eq('id', editing.id)
       : await supabase.from('fg_addresses').insert({ ...row, user_id: user.id })
@@ -148,7 +148,7 @@ function AddressesTab() {
         <form onSubmit={save} className="mb-6 grid gap-4 rounded-2xl bg-[#fffaf7] p-4 sm:grid-cols-2">
           <Field label="Tên gợi nhớ" value={editing.label ?? ''} onChange={v => setEditing({ ...editing, label: v })} placeholder="Nhà riêng, Công ty..." />
           <Field label="Người nhận" value={editing.recipient ?? ''} onChange={v => setEditing({ ...editing, recipient: v })} required />
-          <Field label="Số điện thoại" type="tel" value={editing.phone ?? ''} onChange={v => setEditing({ ...editing, phone: v })} required />
+          <Field label="Số điện thoại" type="tel" inputMode="tel" value={editing.phone ?? ''} onChange={v => setEditing({ ...editing, phone: phoneInput(v) })} placeholder="0912 345 678" required />
           <Field label="Địa chỉ" value={editing.address ?? ''} onChange={v => setEditing({ ...editing, address: v })} required />
           <label className="flex cursor-pointer items-center gap-3 text-sm text-[#746b67] sm:col-span-2">
             <input type="checkbox" checked={Boolean(editing.is_default)} onChange={e => setEditing({ ...editing, is_default: e.target.checked })} className="size-5 accent-[#ff5b35]" /> Đặt làm địa chỉ mặc định

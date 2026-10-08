@@ -5,6 +5,7 @@ import { ImagePlus, Loader2, Pencil, Plus, Search, Trash2, X } from 'lucide-reac
 import { Button } from '@/components/ui/button'
 import { useApp } from '@/components/app-provider'
 import { errorMessage, supabase } from '@/lib/supabase'
+import { normalizePhone, PHONE_ERROR, phoneInput } from '@/lib/validate'
 import { LocationPicker } from '@/components/admin/location-picker'
 
 export type FieldDef = {
@@ -12,7 +13,8 @@ export type FieldDef = {
   label: string
   /** 'hidden': not shown in the form; new rows get `default` */
   /** 'location': map pin stored in the row's lat/lng (key is just a name); fills `addressKey` too */
-  type: 'text' | 'number' | 'textarea' | 'image' | 'select' | 'checkbox' | 'date' | 'time' | 'location' | 'hidden'
+  /** 'tel': Vietnamese phone number, validated and saved as 0xxxxxxxxx */
+  type: 'text' | 'tel' | 'number' | 'textarea' | 'image' | 'select' | 'checkbox' | 'date' | 'time' | 'location' | 'hidden'
   required?: boolean
   hint?: string
   addressKey?: string
@@ -89,6 +91,12 @@ export function EntityManager({ table, title, fields, columns, select = '*', ord
         continue
       }
       const v = editing[f.key]
+      if (f.type === 'tel') {
+        const phone = v ? normalizePhone(String(v)) : null
+        if (v && !phone) return toast(`${f.label}: ${PHONE_ERROR.toLowerCase()}`, 'error')
+        payload[f.key] = phone
+        continue
+      }
       payload[f.key] = f.type === 'number' ? (v === '' || v === null ? null : Number(v))
         : f.type === 'select' ? (v === '' || v === null ? null : Number.isNaN(Number(v)) ? v : Number(v))
         : f.type === 'checkbox' ? Boolean(v)
@@ -247,6 +255,8 @@ function FieldInput({ def, value, onChange }: { def: FieldDef; value: unknown; o
         <input type="date" value={str.slice(0, 10)} onChange={e => onChange(e.target.value)} required={def.required} className={inputCls} />
       ) : def.type === 'time' ? (
         <input type="time" value={str.slice(0, 5)} onChange={e => onChange(e.target.value)} required={def.required} className={inputCls} />
+      ) : def.type === 'tel' ? (
+        <input type="tel" inputMode="tel" value={str} onChange={e => onChange(phoneInput(e.target.value))} required={def.required} placeholder="0912 345 678" className={inputCls} />
       ) : (
         <input type={def.type === 'number' ? 'number' : 'text'} step="any" value={str} onChange={e => onChange(e.target.value)} required={def.required} className={inputCls} />
       )}

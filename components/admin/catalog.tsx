@@ -77,7 +77,7 @@ export function restaurantFields(admin: boolean): FieldDef[] {
     { key: 'cuisine', label: 'Món chính (VD: Cơm • Gà rán • Trà sữa)', type: 'text' },
     { key: 'location', label: 'Vị trí nhà hàng', type: 'location', required: true, addressKey: 'address' },
     { key: 'address', label: 'Địa chỉ hiển thị cho khách', type: 'text', required: true, wide: true, hint: 'Tự điền khi ghim trên bản đồ; có thể sửa lại cho dễ đọc' },
-    { key: 'phone', label: 'Số điện thoại nhà hàng', type: 'text' },
+    { key: 'phone', label: 'Số điện thoại nhà hàng', type: 'tel' },
     { key: 'delivery_time', label: 'Thời gian giao', type: 'text', required: true, default: '20-30 phút' },
     { key: 'tag', label: 'Nhãn (Freeship, Giảm 20%...)', type: 'text' },
     { key: 'open_time', label: 'Giờ mở cửa', type: 'time', default: '07:00', hint: 'Giờ Việt Nam. Để trống cả hai = mở cả ngày' },

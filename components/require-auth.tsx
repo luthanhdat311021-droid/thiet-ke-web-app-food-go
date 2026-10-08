@@ -5,18 +5,12 @@ import { useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useApp } from '@/components/app-provider'
 import { Spinner } from '@/components/cards'
-import { MfaChallenge, useAal } from '@/components/mfa'
 
-/**
- * Redirects to /login when signed out; with `admin`, also requires profiles.role = 'admin'.
- * `admin` / `secure` pages (admin panel, restaurant owner panel) also ask for the 2FA code when the
- * account has 2FA on — the database refuses those rights to sessions without it anyway.
- */
-export function RequireAuth({ children, admin = false, secure = false }: { children: React.ReactNode; admin?: boolean; secure?: boolean }) {
+/** Redirects to /login when signed out; with `admin`, also requires profiles.role = 'admin'. */
+export function RequireAuth({ children, admin = false }: { children: React.ReactNode; admin?: boolean }) {
   const { user, profile, authLoading, signingOut, signOut } = useApp()
   const router = useRouter()
   const pathname = usePathname()
-  const { aal, needsCode, refresh } = useAal()
 
   useEffect(() => {
     // after "Đăng xuất" the app is already heading home; only unexpected sign-outs come back here after login
@@ -24,10 +18,6 @@ export function RequireAuth({ children, admin = false, secure = false }: { child
   }, [authLoading, user, signingOut, router, pathname])
 
   if (authLoading || !user) return <Spinner />
-  if (admin || secure) {
-    if (!aal) return <Spinner />
-    if (needsCode) return <MfaChallenge onVerified={refresh} />
-  }
   if (admin) {
     if (!profile) return <Spinner />
     if (profile.role !== 'admin') {

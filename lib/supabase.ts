@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { PHONE_ERROR } from '@/lib/validate'
 
 // strip stray BOM/whitespace that some shells add when env values are piped in
 const clean = (v?: string) => v?.replace(/^﻿/, '').trim() || undefined
@@ -16,6 +17,11 @@ export const supabase: SupabaseClient = createClient(
 )
 
 export function errorMessage(e: unknown) {
-  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message)
+  if (e && typeof e === 'object' && 'message' in e) {
+    const msg = String((e as { message: unknown }).message)
+    // CHECK constraints from 017_phone_check.sql report in English
+    if (/violates check constraint "fg_\w+_phone_check"/.test(msg)) return PHONE_ERROR
+    return msg
+  }
   return 'Đã có lỗi xảy ra, vui lòng thử lại'
 }

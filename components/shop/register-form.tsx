@@ -8,6 +8,7 @@ import { ImageInput } from '@/components/admin/entity-manager'
 import { LocationPicker, type LocationValue } from '@/components/admin/location-picker'
 import { errorMessage, supabase } from '@/lib/supabase'
 import { money } from '@/lib/format'
+import { normalizePhone, PHONE_ERROR, phoneInput } from '@/lib/validate'
 import { SUBSCRIPTION_FEE } from '@/lib/shop'
 
 const inputCls = 'mt-2 h-11 w-full rounded-xl border border-[#eaded8] bg-white px-3 font-normal outline-none focus:border-[#ff5b35]'
@@ -27,9 +28,11 @@ export function RegisterRestaurantForm({ onRegistered }: { onRegistered: () => v
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    const phone = normalizePhone(form.phone)
+    if (!phone) return setError(PHONE_ERROR)
     if (pos.lat == null || pos.lng == null) return setError('Vui lòng ghim vị trí nhà hàng trên bản đồ')
     setBusy(true)
-    const { error } = await supabase.rpc('fg_register_restaurant', { p: { ...form, phone: form.phone.replace(/[\s.]/g, ''), lat: pos.lat, lng: pos.lng } })
+    const { error } = await supabase.rpc('fg_register_restaurant', { p: { ...form, phone, lat: pos.lat, lng: pos.lng } })
     setBusy(false)
     if (error) return setError(errorMessage(error))
     toast('Đã tạo nhà hàng. Thanh toán phí tháng đầu để bắt đầu bán!')
@@ -64,7 +67,7 @@ export function RegisterRestaurantForm({ onRegistered }: { onRegistered: () => v
           <input value={form.cuisine} onChange={e => set({ cuisine: e.target.value })} maxLength={120} placeholder="VD: Bún bò • Bánh canh" className={inputCls} />
         </label>
         <label className="block text-sm font-semibold">Số điện thoại <span className="text-[#ff5b35]">*</span>
-          <input type="tel" value={form.phone} onChange={e => set({ phone: e.target.value })} required autoComplete="tel" className={inputCls} />
+          <input type="tel" inputMode="tel" value={form.phone} onChange={e => set({ phone: phoneInput(e.target.value) })} required placeholder="0912 345 678" autoComplete="tel" className={inputCls} />
         </label>
 
         <div className="text-sm font-semibold sm:col-span-2">Vị trí nhà hàng <span className="text-[#ff5b35]">*</span>

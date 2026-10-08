@@ -16,6 +16,7 @@ import { RequireAuth } from '@/components/require-auth'
 import { ClosedNotice, EmptyState, Panel } from '@/components/cards'
 import { Field, TextArea } from '@/components/field'
 import { errorMessage, supabase } from '@/lib/supabase'
+import { normalizePhone, PHONE_ERROR, phoneInput } from '@/lib/validate'
 import { money, shippingFee } from '@/lib/format'
 import type { Address, Order, Restaurant, VoucherQuote } from '@/lib/types'
 
@@ -129,10 +130,12 @@ function Checkout() {
 
   const placeOrder = async () => {
     setError('')
-    const info = chosen ? { recipient: chosen.recipient, phone: chosen.phone, address: chosen.address } : { recipient, phone, address }
+    const raw = chosen ? { recipient: chosen.recipient, phone: chosen.phone, address: chosen.address } : { recipient, phone, address }
     if (tripKm !== null && tripKm > 30) return setError(`Vị trí giao hàng cách nhà hàng ${formatKm(tripKm)}, vượt quá phạm vi giao hàng (30 km)`)
-    if (!info.recipient.trim() || !info.address.trim()) return setError('Vui lòng nhập đầy đủ người nhận và địa chỉ')
-    if (!/^(0|\+84)\d{9,10}$/.test(info.phone.replace(/[\s.]/g, ''))) return setError('Số điện thoại không hợp lệ')
+    if (!raw.recipient.trim() || !raw.address.trim()) return setError('Vui lòng nhập đầy đủ người nhận và địa chỉ')
+    const cleanPhone = normalizePhone(raw.phone)
+    if (!cleanPhone) return setError(chosen ? `${PHONE_ERROR}. Vui lòng sửa địa chỉ đã lưu trong Tài khoản.` : PHONE_ERROR)
+    const info = { ...raw, phone: cleanPhone }
     if (!agree) return setError('Bạn cần đồng ý với điều khoản đặt hàng')
 
     setBusy(true)
@@ -216,7 +219,7 @@ function Checkout() {
                   )}
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field label="Người nhận" value={recipient} onChange={setRecipient} autoComplete="name" />
-                    <Field label="Số điện thoại" type="tel" value={phone} onChange={setPhone} autoComplete="tel" />
+                    <Field label="Số điện thoại" type="tel" inputMode="tel" value={phone} onChange={v => setPhone(phoneInput(v))} placeholder="0912 345 678" autoComplete="tel" />
                     <div className="sm:col-span-2">
                       <Field label={resolving ? 'Địa chỉ (đang cập nhật...)' : 'Địa chỉ'} value={address} onChange={setAddress} placeholder="Số nhà, đường, phường, quận, thành phố" autoComplete="street-address" />
                       <p className="mt-1 text-xs text-[#9c918c]">Bạn có thể sửa lại số nhà, hẻm, tòa nhà cho tài xế dễ tìm.</p>
