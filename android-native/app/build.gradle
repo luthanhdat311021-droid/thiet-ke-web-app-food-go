@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace = 'com.foodgo.nativeapp'
+    compileSdk = 36
+
+    defaultConfig {
+        // khác applicationId của bản WebView (com.foodgo.app) nên cài được song song để so sánh
+        applicationId 'com.foodgo.app.nativeapp'
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName '1.0-native'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.core:core-splashscreen:1.2.0'
+    implementation 'androidx.browser:browser:1.8.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.google.code.gson:gson:2.11.0'
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    implementation 'org.osmdroid:osmdroid-android:6.1.20'
+}

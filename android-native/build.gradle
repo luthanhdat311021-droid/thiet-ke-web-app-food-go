@@ -1,0 +1,4 @@
+// Top-level build file. Bản native (Java) của FoodGo, chạy song song với bản WebView trong ../android
+plugins {
+    id 'com.android.application' version '8.13.0' apply false
+}
